@@ -9,5 +9,6 @@ public enum OpenAiCompatibleLlmFailureKind {
     CONNECTION_FAILED,
     INVALID_RESPONSE,
     INVALID_MODEL,
+    UNSUPPORTED_PARAMS,
     HTTP_ERROR
 }

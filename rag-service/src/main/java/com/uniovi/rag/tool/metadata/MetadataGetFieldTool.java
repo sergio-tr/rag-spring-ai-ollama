@@ -298,7 +298,16 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
                    detectedField, minute.id(), minute.date());
         
         String fieldValue = resolveFieldValueWithAlternatives(detectedField, minute);
-        if (isAttendeesCountField(detectedField)) {
+        if ("startEndTime".equals(detectedField)) {
+            String start = minute.startTime();
+            String end = minute.endTime();
+            if (start != null && !start.isBlank() && end != null && !end.isBlank()) {
+                fieldValue =
+                        StructuredMinuteMetadataSupport.normalizeDisplayTime(start)
+                                + "|"
+                                + StructuredMinuteMetadataSupport.normalizeDisplayTime(end);
+            }
+        } else if (isAttendeesCountField(detectedField)) {
             fieldValue = String.valueOf(StructuredMinuteMetadataSupport.resolveAttendeeCount(minute));
         } else if (isAttendeesField(detectedField)) {
             fieldValue = resolveCompleteAttendeesList(minute, fieldValue, textByMinuteId);
@@ -428,12 +437,34 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
 
         // Priority 4: Other specific field requests
         if (containsAny(q, "duración", FIELD_DURATION, "cuánto dur")) return "durationMinutes";
+        if (containsAny(q, "presentes", "presente")) {
+            if (containsAny(q, "cuantos", "cuántos", "cuantas", "cuántas", "numero", "número", "cuantos hay")) {
+                return "attendeesCount";
+            }
+            return FIELD_ATTENDEES;
+        }
+        if (containsAny(q, "estuvieron presentes", "estuvieron presente", "quienes estuvieron", "quiénes estuvieron")) {
+            return FIELD_ATTENDEES;
+        }
         if (containsAny(q, "año", "year")) return "year";
         if (containsAny(q, "mes", "month")) return "month";
         if (containsAny(q, "lugar", "sitio", "place", "ubicación")) return "place";
-        if (containsAny(q, "inicio", "start time", "hora de inicio", "comienzo")) return "startTime";
+        if ((containsAny(q, "empez", "comenz", "inicio") || containsAny(q, "inicio", "start time", "hora de inicio", "comienzo"))
+                && (containsAny(q, "termin", "finaliz") || containsAny(q, "fin", "final", "end time", "hora de cierre"))) {
+            return "startEndTime";
+        }
+        if (containsAny(q, "inicio", "start time", "hora de inicio", "comienzo", "empez", "comenz")) return "startTime";
         if (containsAny(q, "fin", "final", "end time", "hora de cierre", "termin")) return FIELD_END_TIME;
-        if (containsAny(q, "presidente", FIELD_PRESIDENT, "quién presidió", "who presided")) return FIELD_PRESIDENT;
+        if (containsAny(
+                q,
+                "presidente",
+                FIELD_PRESIDENT,
+                "quién presidió",
+                "who presided",
+                "who was the president",
+                "who was president")) {
+            return FIELD_PRESIDENT;
+        }
         if (containsAny(q, LABEL_SECRETARIO, FIELD_SECRETARY, "secretaria", "quién fue la secretaria", "who was the secretary")) {
             log().debug("Classified as 'secretary' based on query: '{}'", query);
             return FIELD_SECRETARY;
@@ -452,6 +483,11 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         if (containsAny(q, "enumera", "lista", "listar", "listado")
                 && containsAny(q, "asistente", "participante", "personas", "propietario", "propietarios")) {
             return FIELD_ATTENDEES;
+        }
+        if (containsAny(q, "temas", "discutieron", "trataron", "se discut", "qué temas", "que temas")
+                && !containsAny(q, "cuántos asistentes", "cuantos asistentes", "cuántas personas", "cuantas personas")) {
+            log().debug("Classified as 'topics' based on query intent over NER attendee hint");
+            return FIELD_TOPICS;
         }
         if (containsAny(q, "cuantos asistieron", "numero de asistentes", "attendees count")) {
             return "attendeesCount";
@@ -522,6 +558,10 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
 
         if (isAttendeesField(detectedField)) {
             return formatAttendeesFieldAnswer(query, results);
+        }
+
+        if ("startEndTime".equals(detectedField)) {
+            return formatStartEndTimeAnswer(query, results);
         }
 
         if (isAttendeesCountField(detectedField)) {
@@ -699,7 +739,36 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
     }
 
     /**
-     * Deterministic attendee listing — avoids LLM truncation of long participant lists.
+     * Deterministic start/end time answer for acta follow-ups (no LLM).
+     */
+    private String formatStartEndTimeAnswer(String query, List<FieldResult> results) {
+        if (results == null || results.isEmpty()) {
+            return generateNotFoundMessage(query);
+        }
+        FieldResult best = results.get(0);
+        String raw = best.getFieldValue();
+        if (raw == null || !raw.contains("|")) {
+            return generateNotFoundMessage(query);
+        }
+        String[] parts = raw.split("\\|", 2);
+        String start = parts[0].trim();
+        String end = parts[1].trim();
+        String dateSlash = StructuredMinuteMetadataSupport.resolveCanonicalSlashDate(best.getDate());
+        if (dateSlash.isBlank()) {
+            for (String candidate : extractDateCandidates(query, new JSONObject())) {
+                dateSlash = StructuredMinuteMetadataSupport.resolveCanonicalSlashDate(candidate);
+                if (!dateSlash.isBlank()) {
+                    break;
+                }
+            }
+        }
+        String dateLabel = dateSlash.isBlank() ? "acta anclada" : dateSlash;
+        return String.format(
+                "La acta del %s empezó a las %s h y terminó a las %s h.", dateLabel, start, end);
+    }
+
+    /**
+     * Deterministic attendee listing - avoids LLM truncation of long participant lists.
      */
     private String formatAttendeesFieldAnswer(String query, List<FieldResult> results) {
         FieldResult best = results.get(0);

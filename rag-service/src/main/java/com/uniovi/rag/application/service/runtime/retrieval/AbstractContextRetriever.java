@@ -2,9 +2,11 @@ package com.uniovi.rag.application.service.runtime.retrieval;
 
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
+import com.uniovi.rag.domain.runtime.RagSnapshotContextHolder;
 import com.uniovi.rag.infrastructure.observability.Loggable;
 import com.uniovi.rag.application.service.runtime.RuntimePromptBudgeter;
 import com.uniovi.rag.util.DateParsingSupport;
+import com.uniovi.rag.util.NerDateFieldSupport;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -17,6 +19,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -25,6 +28,7 @@ import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 
 public abstract class AbstractContextRetriever implements ContextRetriever, Loggable {
@@ -72,15 +76,39 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
 
     @Override
     public List<Document> retrieve(String query) {
-        SearchRequest req = SearchRequest.builder()
-                .query(query)
-                .topK(effectiveTopK())
-                .similarityThreshold(effectiveSimilarityThreshold())
-                .build();
-        List<Document> docs = vectorStore.similaritySearch(req);
+        SearchRequest.Builder searchBuilder =
+                SearchRequest.builder()
+                        .query(query)
+                        .topK(effectiveTopK())
+                        .similarityThreshold(effectiveSimilarityThreshold());
+        var snapshotFilter = snapshotFilterForActiveRequest();
+        if (snapshotFilter != null) {
+            searchBuilder.filterExpression(snapshotFilter);
+        }
+        List<Document> docs = vectorStore.similaritySearch(searchBuilder.build());
         docs = applyProjectAndDocumentFilter(docs);
         // Group and combine chunks by document_id to ensure complete content
         return groupAndCombineChunks(docs);
+    }
+
+    /** When execution binds an active hybrid snapshot, scope vector reads to that snapshot only. */
+    protected Filter.Expression snapshotFilterForActiveRequest() {
+        Set<String> snapshotIds = RagSnapshotContextHolder.activeSnapshotIds();
+        if (snapshotIds.isEmpty()) {
+            return null;
+        }
+        List<UUID> uuids = new ArrayList<>();
+        for (String id : snapshotIds) {
+            if (id == null || id.isBlank()) {
+                continue;
+            }
+            try {
+                uuids.add(UUID.fromString(id.trim()));
+            } catch (IllegalArgumentException ignored) {
+                // skip malformed snapshot ids
+            }
+        }
+        return SnapshotBoundRetrievalFilter.buildForRequest(uuids);
     }
 
     protected int effectiveTopK() {
@@ -210,11 +238,16 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         return similarityThreshold;
     }
 
+    protected String buildContentWithOptionalMetadataPrefix(Document doc, String content) {
+        return buildContentWithOptionalMetadataPrefix(doc, content, false);
+    }
+
     /**
      * Builds content with optional metadata prefix (Acta: date. Presidente: X. Temas: Y. Contenido: )
-     * when the document has date_iso/date, president or topics in metadata. Otherwise returns content unchanged.
+     * when the document has date_iso/date, president or topics in metadata. When {@code metadataRich},
+     * also surfaces sectionType and attendee count for metadata-capable workflows.
      */
-    protected String buildContentWithOptionalMetadataPrefix(Document doc, String content) {
+    protected String buildContentWithOptionalMetadataPrefix(Document doc, String content, boolean metadataRich) {
         if (doc == null) {
             return content != null ? content : "";
         }
@@ -229,6 +262,10 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
             date = String.valueOf(meta.get("date"));
         }
         String president = meta.containsKey("president") ? String.valueOf(meta.get("president")) : null;
+        String secretary = metadataRich && meta.containsKey("secretary") ? String.valueOf(meta.get("secretary")) : null;
+        String sectionType =
+                metadataRich && meta.containsKey("sectionType") ? String.valueOf(meta.get("sectionType")) : null;
+        String attendeesCount = metadataRich ? attendeesCountLabel(meta) : null;
         Object topicsObj = meta.get("topics");
         String topicsStr = null;
         if (topicsObj instanceof List<?> list) {
@@ -236,15 +273,29 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         } else if (topicsObj != null) {
             topicsStr = topicsObj.toString();
         }
-        if (date == null && president == null && (topicsStr == null || topicsStr.isBlank())) {
+        if (date == null && president == null && (topicsStr == null || topicsStr.isBlank())
+                && secretary == null && sectionType == null && attendeesCount == null) {
             return content != null ? content : "";
         }
         StringBuilder prefix = new StringBuilder("Acta: ");
         if (date != null) prefix.append(date).append(". ");
         if (president != null) prefix.append("Presidente: ").append(president).append(". ");
+        if (secretary != null && !secretary.isBlank()) prefix.append("Secretario: ").append(secretary).append(". ");
+        if (attendeesCount != null) prefix.append("Asistentes: ").append(attendeesCount).append(". ");
+        if (sectionType != null && !sectionType.isBlank()) prefix.append("Sección: ").append(sectionType).append(". ");
         if (topicsStr != null && !topicsStr.isBlank()) prefix.append("Temas: ").append(topicsStr).append(". ");
         prefix.append("Contenido: ");
         return prefix + (content != null ? content : "");
+    }
+
+    private static String attendeesCountLabel(Map<String, Object> meta) {
+        for (String key : List.of("attendeesCount", "numberOfAttendees")) {
+            Object value = meta.get(key);
+            if (value != null && !String.valueOf(value).isBlank()) {
+                return String.valueOf(value).trim();
+            }
+        }
+        return null;
     }
 
     public abstract String filterDocumentContent(Document doc, String query, JSONObject entities);
@@ -259,10 +310,13 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
             return docs;
         }
         try {
-            JSONArray arr = nerEntities.getJSONArray("date");
+            List<String> dateStrings = NerDateFieldSupport.readDateStrings(nerEntities);
+            if (dateStrings.isEmpty()) {
+                return docs;
+            }
             List<LocalDate> requestedDates = new ArrayList<>();
-            for (int i = 0; i < arr.length(); i++) {
-                LocalDate d = parseDateToLocalDate(arr.optString(i, "").trim());
+            for (String dateStr : dateStrings) {
+                LocalDate d = parseDateToLocalDate(dateStr);
                 if (d != null) requestedDates.add(d);
             }
             if (requestedDates.isEmpty()) return docs;

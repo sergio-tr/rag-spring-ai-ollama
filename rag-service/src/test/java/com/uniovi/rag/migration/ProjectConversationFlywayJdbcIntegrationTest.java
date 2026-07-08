@@ -1,13 +1,13 @@
 package com.uniovi.rag.migration;
 
+import com.uniovi.rag.testsupport.PostgresIntegrationTestSupport;
+import com.uniovi.rag.testsupport.PostgresIntegrationTestSupport.PostgresBinding;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
 
 import javax.sql.DataSource;
 import java.util.UUID;
@@ -18,23 +18,19 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * Applies Flyway to a clean Postgres, then verifies relational invariants for multi-tenant chat data
  * (users → projects → conversations) via JDBC (Fase C.1 of the test implementation plan).
  */
-@EnabledIf(value = "com.uniovi.rag.testsupport.TestEnvironment#isDockerAvailable",
-        disabledReason = "Docker required for isolated Postgres")
+@EnabledIf(
+        value = "com.uniovi.rag.testsupport.TestEnvironment#isIsolatedFlywayPostgresAvailable",
+        disabledReason = "Postgres admin URL or Docker required for isolated Postgres")
 class ProjectConversationFlywayJdbcIntegrationTest {
 
-    private static PostgreSQLContainer<?> postgres;
+    private static PostgresBinding postgresBinding;
     private static DataSource dataSource;
 
     @BeforeAll
     static void startPostgres() {
-        postgres = new PostgreSQLContainer<>("pgvector/pgvector:0.8.2-pg16-bookworm")
-                .withDatabaseName("api_v5_jdbc")
-                .withUsername("test")
-                .withPassword("test")
-                .withInitScript("testcontainers-vectordb-init.sql");
-        postgres.start();
-        dataSource = new DriverManagerDataSource(
-                postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+        postgresBinding =
+                PostgresIntegrationTestSupport.startIsolatedDatabase("api_v5_jdbc", "testcontainers-vectordb-init.sql");
+        dataSource = postgresBinding.dataSource();
         Flyway.configure()
                 .dataSource(dataSource)
                 .locations("classpath:db/migration")
@@ -44,8 +40,8 @@ class ProjectConversationFlywayJdbcIntegrationTest {
 
     @AfterAll
     static void stopPostgres() {
-        if (postgres != null) {
-            postgres.stop();
+        if (postgresBinding != null) {
+            postgresBinding.cleanup().run();
         }
     }
 

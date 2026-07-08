@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.chat;
 
+import com.uniovi.rag.domain.chat.IndexCompatibilityMessages;
 import com.uniovi.rag.interfaces.rest.dto.ChatPresetSummaryDto;
 import com.uniovi.rag.interfaces.rest.dto.DisabledRuntimeFeatureDto;
 import com.uniovi.rag.interfaces.rest.dto.PresetCompatibilityDto;
@@ -13,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.springframework.http.HttpStatus;
 
@@ -46,7 +48,7 @@ public final class ChatRuntimeCompatibilitySupport {
                         new RuntimeConfigValidationIssueDto(
                                 "INDEX_BOUND_RUNTIME_OVERRIDE",
                                 key,
-                                key + " is index-bound and cannot be changed from Chat. Create or reindex a project with a compatible profile.",
+                                key + " is index-bound and cannot be changed from Chat. Index settings are fixed at project creation.",
                                 ERROR));
             }
         }
@@ -154,6 +156,21 @@ public final class ChatRuntimeCompatibilitySupport {
     public static List<DisabledRuntimeFeatureDto> disabledRuntimeFeatures(
             List<RuntimeConfigCapabilityDto> capabilities,
             Map<String, Object> effectiveConfig) {
+        return disabledRuntimeFeatures(capabilities, effectiveConfig, null);
+    }
+
+    public static List<DisabledRuntimeFeatureDto> disabledRuntimeFeatures(
+            List<RuntimeConfigCapabilityDto> capabilities,
+            Map<String, Object> effectiveConfig,
+            RuntimeIndexCompatibilityDto indexCompatibility) {
+        return disabledRuntimeFeatures(capabilities, effectiveConfig, indexCompatibility, null);
+    }
+
+    public static List<DisabledRuntimeFeatureDto> disabledRuntimeFeatures(
+            List<RuntimeConfigCapabilityDto> capabilities,
+            Map<String, Object> effectiveConfig,
+            RuntimeIndexCompatibilityDto indexCompatibility,
+            Map<String, Object> presetBaseEffectiveConfig) {
         if (capabilities == null || capabilities.isEmpty()) {
             return List.of();
         }
@@ -162,7 +179,8 @@ public final class ChatRuntimeCompatibilitySupport {
             if (c == null || !c.visibleInChat()) {
                 continue;
             }
-            DisabledRuntimeFeatureDto disabled = disabledRuntimeFeature(c, effectiveConfig);
+            DisabledRuntimeFeatureDto disabled =
+                    disabledRuntimeFeature(c, effectiveConfig, indexCompatibility, presetBaseEffectiveConfig);
             if (disabled != null) {
                 out.add(disabled);
             }
@@ -172,16 +190,34 @@ public final class ChatRuntimeCompatibilitySupport {
 
     private static DisabledRuntimeFeatureDto disabledRuntimeFeature(
             RuntimeConfigCapabilityDto c,
-            Map<String, Object> effectiveConfig) {
+            Map<String, Object> effectiveConfig,
+            RuntimeIndexCompatibilityDto indexCompatibility,
+            Map<String, Object> presetBaseEffectiveConfig) {
         DisabledRuntimeFeatureDto ownState = disabledByCapabilityState(c);
         if (ownState != null) {
             return ownState;
+        }
+        Optional<DisabledRuntimeFeatureDto> materialization =
+                MaterializationFeatureGateService.materializationDisable(c.key(), indexCompatibility);
+        if (materialization.isPresent()) {
+            return materialization.get();
+        }
+        if (presetBaseEffectiveConfig != null && PresetBaseFeatureSupport.isPresetControlledBooleanKey(c.key())) {
+            Optional<DisabledRuntimeFeatureDto> presetLock =
+                    PresetBaseFeatureSupport.presetLockDisable(c.key(), presetBaseEffectiveConfig);
+            if (presetLock.isPresent()) {
+                return presetLock.get();
+            }
         }
         DisabledRuntimeFeatureDto missingRequirement = firstMissingRequirement(c, effectiveConfig);
         if (missingRequirement != null) {
             return missingRequirement;
         }
-        return firstActiveExclusion(c, effectiveConfig);
+        DisabledRuntimeFeatureDto activeExclusion = firstActiveExclusion(c, effectiveConfig);
+        if (activeExclusion != null) {
+            return activeExclusion;
+        }
+        return disabledByEngineWiring(c);
     }
 
     private static DisabledReason firstPresetDisabledReason(
@@ -202,7 +238,12 @@ public final class ChatRuntimeCompatibilitySupport {
                     indexCompatibility.compatibilityStatus() != null
                             ? indexCompatibility.compatibilityStatus()
                             : "INDEX_INCOMPATIBLE";
-            return new DisabledReason(code, "Create or reindex the project with a compatible index profile.");
+            if (firstIssue != null && firstIssue.message() != null && !firstIssue.message().isBlank()) {
+                return new DisabledReason(
+                        firstIssue.code() != null && !firstIssue.code().isBlank() ? firstIssue.code() : code,
+                        firstIssue.message());
+            }
+            return new DisabledReason(code, IndexCompatibilityMessages.NO_ACTIVE_INDEX);
         }
         return firstIssue != null ? new DisabledReason(firstIssue.code(), firstIssue.message()) : null;
     }
@@ -218,13 +259,23 @@ public final class ChatRuntimeCompatibilitySupport {
                     "NOT_CONFIGURABLE_IN_CHAT",
                     c.reasonIfDisabled() != null ? c.reasonIfDisabled() : "Not configurable in Chat.");
         }
-        if (!c.implemented() || !c.engineWired()) {
+        if (!c.implemented()) {
             return new DisabledRuntimeFeatureDto(
                     c.key(),
                     "NOT_IMPLEMENTED",
                     c.reasonIfNotImplemented() != null ? c.reasonIfNotImplemented() : "Not implemented.");
         }
         return null;
+    }
+
+    private static DisabledRuntimeFeatureDto disabledByEngineWiring(RuntimeConfigCapabilityDto c) {
+        if (c.engineWired()) {
+            return null;
+        }
+        return new DisabledRuntimeFeatureDto(
+                c.key(),
+                "NOT_IMPLEMENTED",
+                c.reasonIfNotImplemented() != null ? c.reasonIfNotImplemented() : "Not implemented.");
     }
 
     private static DisabledRuntimeFeatureDto firstMissingRequirement(

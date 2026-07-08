@@ -45,6 +45,20 @@ class DeterministicToolRoutingPolicyTest {
     }
 
     @Test
+    void explicitActaFilenameFieldQuery_doesNotForceStructuredToolRoute() {
+        QueryPlan plan =
+                planWithClassifier(
+                        "¿Cuántos propietarios asistieron a la reunión del 25 de agosto de 2025 (ACTA 3.pdf)?",
+                        QueryType.GET_FIELD,
+                        Map.of("field", "attendeesCount"));
+
+        AdaptiveRoutingDecision decision = policy.resolve(ragWithTools(), plan);
+
+        assertThat(decision.primaryRouteKind()).isEqualTo(AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE);
+        assertThat(decision.reasons()).anyMatch(r -> r.contains("explicit_acta_filename_field_query"));
+    }
+
+    @Test
     void structuredSummaryRoutesToDeterministicTools() {
         QueryPlan plan =
                 planWithClassifier(

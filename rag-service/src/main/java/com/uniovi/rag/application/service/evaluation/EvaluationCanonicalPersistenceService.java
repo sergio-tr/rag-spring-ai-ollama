@@ -4,6 +4,7 @@ import com.uniovi.rag.application.result.evaluation.LlmJudgeEvaluationBatchResul
 import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.domain.EvaluationRunStatus;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
+import com.uniovi.rag.application.service.evaluation.provenance.EvaluationProvenanceSupport;
 import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationResultEntity;
@@ -128,6 +129,7 @@ public class EvaluationCanonicalPersistenceService {
             metrics.put("llm_evaluation_excerpt", trunc(evalText, 4000));
             mergeOptionalRowKeys(r, metrics);
             mergeMetricsPayloadFromRow(r, metrics);
+            EvaluationProvenanceSupport.enrichMetricsFromRun(metrics, run);
             e.setMetricsPayload(metrics);
             saved.add(e);
         }
@@ -193,6 +195,7 @@ public class EvaluationCanonicalPersistenceService {
                 metrics.put("judge_scores", scores);
                 metrics.put("llm_evaluation_excerpt", trunc(evalText, 4000));
             }
+            EvaluationProvenanceSupport.enrichMetricsFromRun(metrics, run);
             e.setMetricsPayload(metrics);
             saved.add(e);
         }
@@ -276,6 +279,7 @@ public class EvaluationCanonicalPersistenceService {
                 }
             }
             metrics.put("baseline_metrics", copy);
+            promoteRoleEvalKeys(copy, metrics);
         }
         Object preset = row.get(BenchmarkResultRowKeys.PRESET_CODE);
         if (preset != null) {
@@ -308,6 +312,24 @@ public class EvaluationCanonicalPersistenceService {
         Object embMid = row.get(BenchmarkResultRowKeys.EMBEDDING_MODEL_ID);
         if (embMid != null) {
             metrics.put(BenchmarkResultRowKeys.EMBEDDING_MODEL_ID, embMid);
+        }
+    }
+
+    private static void promoteRoleEvalKeys(Map<String, Object> baseline, Map<String, Object> metrics) {
+        if (baseline == null || metrics == null) {
+            return;
+        }
+        for (String key :
+                List.of(
+                        BenchmarkResultRowKeys.ROLE_EVAL_SUBSET,
+                        BenchmarkResultRowKeys.ROLE_EVAL_ROLE_FAMILY,
+                        BenchmarkResultRowKeys.ROLE_EVAL_ROLE_PROFILE,
+                        BenchmarkResultRowKeys.ROLE_EVAL_SCORING_TYPE,
+                        BenchmarkResultRowKeys.ROLE_EVAL_PASSED)) {
+            Object v = baseline.get(key);
+            if (v != null) {
+                metrics.put(key, v);
+            }
         }
     }
 

@@ -7,7 +7,9 @@ import com.uniovi.rag.domain.llm.catalog.LlmCatalogDefaults;
 import com.uniovi.rag.domain.llm.catalog.LlmCatalogEntry;
 import com.uniovi.rag.domain.llm.catalog.LlmCatalogQuery;
 import com.uniovi.rag.domain.llm.catalog.LlmCatalogSource;
+import com.uniovi.rag.domain.llm.catalog.LlmModelReasonCodes;
 import com.uniovi.rag.domain.llm.catalog.LlmModelCapability;
+import com.uniovi.rag.domain.llm.catalog.LlmModelRoleResolver;
 import com.uniovi.rag.domain.llm.catalog.LlmModelUsageContext;
 import com.uniovi.rag.infrastructure.llm.LlmOllamaDefaults;
 import com.uniovi.rag.infrastructure.llm.LlmOpenAiCompatibleDefaults;
@@ -206,14 +208,20 @@ public class LlmModelCatalogService implements LlmModelCatalogPort {
         if (names.isEmpty() && defaultModel != null && !defaultModel.isBlank()) {
             names.add(defaultModel.trim());
         }
-        boolean selectableByUser = capability == LlmModelCapability.CHAT;
         for (String name : names) {
             if (name == null || name.isBlank()) {
                 continue;
             }
             String trimmed = name.trim();
+            boolean chatPrimaryCapable =
+                    capability != LlmModelCapability.CHAT
+                            || LlmModelRoleResolver.supportsPrimaryChat(trimmed, capability);
+            boolean selectableByUser = capability == LlmModelCapability.CHAT && chatPrimaryCapable;
             boolean usableAsDefault =
-                    defaultModel != null && !defaultModel.isBlank() && trimmed.equals(defaultModel.trim());
+                    defaultModel != null
+                            && !defaultModel.isBlank()
+                            && trimmed.equals(defaultModel.trim())
+                            && chatPrimaryCapable;
             CatalogKey key = new CatalogKey(provider, trimmed, capability);
             target.put(
                     key,
@@ -226,7 +234,9 @@ public class LlmModelCatalogService implements LlmModelCatalogPort {
                             usableAsDefault,
                             trimmed,
                             "",
-                            LlmCatalogSource.PROPERTIES,
+                            provider == LlmProvider.OPENAI_COMPATIBLE
+                                    ? LlmCatalogSource.LITELLM_CONFIGURED
+                                    : LlmCatalogSource.CONFIGURED_CATALOG,
                             Map.of()));
         }
     }
@@ -276,7 +286,18 @@ public class LlmModelCatalogService implements LlmModelCatalogPort {
                         + usageContext
                         + " (model catalog strict validation)";
         return LlmConfigurationException.invalidField(
-                provider, "catalog", modelName != null ? modelName.trim() : null, null, message + " [" + detail + "]");
+                provider,
+                "catalog",
+                modelName != null ? modelName.trim() : null,
+                null,
+                LlmModelReasonCodes.format(resolveConfigurationReasonCode(message), message + " [" + detail + "]"));
+    }
+
+    private static String resolveConfigurationReasonCode(String message) {
+        if (message != null && message.contains("not available in the catalog")) {
+            return LlmModelReasonCodes.LLM_MODEL_UNAVAILABLE;
+        }
+        return LlmModelReasonCodes.LLM_MODEL_NOT_CONFIGURED;
     }
 
     private record CatalogKey(LlmProvider provider, String modelName, LlmModelCapability capability) {}

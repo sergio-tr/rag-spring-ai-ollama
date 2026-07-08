@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ARCHIVED (2026-05): one-off migration script — do not run in CI. Target packages (e.g. application.service.query.removed) were removed by architecture-final-validation L1.
+# ARCHIVED (2026-05): one-off migration script - do not run in CI. Target packages (e.g. application.service.query.removed) were removed by architecture-final-validation L1.
 # Agent A1: move com.uniovi.rag.service.. -> application.service.. (except service.model)
 set -euo pipefail
 

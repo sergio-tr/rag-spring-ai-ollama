@@ -66,7 +66,8 @@ class DatasetQuestionSubsetSupportTest {
                                 List.of(),
                                 List.of(),
                                 GoldSubsetManifestLoader.GOLD_SUBSET_V1,
-                                null));
+                                null,
+                                Map.of()));
 
         assertThat(subset.filterMode()).isEqualTo(DatasetQuestionSubsetSupport.FILTER_GOLD_SUBSET);
         assertThat(subset.questionIds()).hasSize(18);
@@ -116,7 +117,8 @@ class DatasetQuestionSubsetSupportTest {
                                 List.of(),
                                 List.of(),
                                 GoldSubsetManifestLoader.GOLD_SUBSET_V1,
-                                null));
+                                null,
+                                Map.of()));
         assertThat(subsetQuestions).isEqualTo(18);
         assertThat(DatasetQuestionSubsetSupport.resolvedExpectedItemCount(Map.of(), 60, 1)).isEqualTo(60);
         Map<String, Object> agg = Map.of(DatasetQuestionSubsetSupport.AGG_KEY_FILTERED_QUESTION_COUNT, subsetQuestions);

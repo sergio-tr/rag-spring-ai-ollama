@@ -6,6 +6,8 @@ import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
 import com.uniovi.rag.application.service.evaluation.EvaluationServiceFactory;
+import com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeLlmExecutor;
+import com.uniovi.rag.application.service.llm.LlmErrorComposer;
 import com.uniovi.rag.testsupport.ClassifierClientTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -55,7 +57,9 @@ class RagEvaluationConfigurationTest {
                 ragExecutionOrchestrator,
                 runtimeTracePersistenceService,
                 mock(ChatGenerationModelSelector.class),
-                false);
+                false,
+                mock(EvaluationJudgeLlmExecutor.class),
+                mock(LlmErrorComposer.class));
 
         assertNotNull(factory);
     }

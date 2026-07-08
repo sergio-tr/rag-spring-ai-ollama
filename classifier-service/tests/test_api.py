@@ -110,10 +110,11 @@ def test_train_with_minimal_excel_returns_200(client: TestClient, minimal_datase
         },
     )
     if r.status_code == 500:
-        pytest.skip("Training failed (e.g. TensorFlow env)")
+        pytest.fail(f"Training failed unexpectedly: {r.text}")
     assert r.status_code == 200
     data = r.json()
     assert "modelId" in data
+    assert data["modelId"] != "default"
     assert "name" in data
     assert data["name"] == "test-model"
     assert "metrics" in data

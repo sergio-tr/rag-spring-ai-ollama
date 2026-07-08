@@ -71,7 +71,7 @@ export function traceAccountExportCancelled(jobId: string, message: string): voi
   });
 }
 
-/** Poll aborted or timed out locally — server export may still complete. */
+/** Poll aborted or timed out locally - server export may still complete. */
 export function traceAccountExportStoppedWaiting(jobId: string, message: string): void {
   useTraceStore.getState().addTraceEvent({
     section: "account",

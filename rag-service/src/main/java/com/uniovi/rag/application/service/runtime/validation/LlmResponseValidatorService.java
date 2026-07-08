@@ -1,5 +1,8 @@
 package com.uniovi.rag.application.service.runtime.validation;
 
+import com.uniovi.rag.application.service.runtime.FinalAnswerStubSanitizer;
+import com.uniovi.rag.application.service.runtime.PrefixOnlyAnswerGuard;
+import com.uniovi.rag.application.service.runtime.ReasoningBlockSanitizer;
 import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +44,28 @@ public class LlmResponseValidatorService implements ResponseValidator {
         return true;
     }
 
+    /**
+     * Validates user-visible final answers (not raw tool LLM output). Internal metadata stubs are rejected.
+     */
+    public boolean isAcceptableFinalUserAnswer(String response) {
+        if (!isValidResponse(response, "FinalAnswer")) {
+            return false;
+        }
+        if (FinalAnswerStubSanitizer.isInternalStubOnly(response.trim())) {
+            log.warn("FinalAnswer: internal metadata stub rejected: {}", abbreviate(response.trim()));
+            return false;
+        }
+        if (PrefixOnlyAnswerGuard.isPrefixOnlyFragment(response.trim())) {
+            log.warn("FinalAnswer: prefix-only grounding fragment rejected: {}", abbreviate(response.trim()));
+            return false;
+        }
+        return true;
+    }
+
+    private static String abbreviate(String text) {
+        return text.length() <= 80 ? text : text.substring(0, 77) + "...";
+    }
+
     @Override
     public String cleanResponse(String response) {
         if (response == null) return "";
@@ -64,6 +89,7 @@ public class LlmResponseValidatorService implements ResponseValidator {
     public String validateAndClean(String response, String context) {
         if (!isValidResponse(response, context)) return null;
         String cleaned = cleanResponse(response);
+        cleaned = ReasoningBlockSanitizer.stripReasoningBlocks(cleaned);
         if (!isValidResponse(cleaned, context + " (cleaned)")) return null;
         return cleaned;
     }

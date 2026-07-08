@@ -296,5 +296,73 @@ class DefaultAmbiguityAssessmentServiceTest {
         assertThat(out.status()).isEqualTo(AmbiguityStatus.SUFFICIENT);
         assertThat(out.missingFields()).isEmpty();
     }
+
+    @Test
+    void assess_broadScopeSummary_sufficient() {
+        DefaultAmbiguityAssessmentService sut = new DefaultAmbiguityAssessmentService();
+
+        AmbiguityAssessment out =
+                sut.assess(
+                        new NormalizedQuery("raw", "Resume todo lo tratado sobre calefacción.", List.of()),
+                        Optional.of(QueryType.SUMMARIZE_TOPIC),
+                        QueryType.SUMMARIZE_TOPIC.name(),
+                        ClassifierStatus.OK,
+                        StructuredRewriteResult.identityFallback(
+                                "Resume todo lo tratado sobre calefacción.", null),
+                        EntityExtractionResult.emptyWithNote(null));
+
+        assertThat(out.status()).isEqualTo(AmbiguityStatus.SUFFICIENT);
+    }
+
+    @Test
+    void assess_corpusWideListing_sufficient() {
+        DefaultAmbiguityAssessmentService sut = new DefaultAmbiguityAssessmentService();
+        String q = "dime qué actas tienen 20 asistentes";
+
+        AmbiguityAssessment out =
+                sut.assess(
+                        new NormalizedQuery("raw", q, List.of()),
+                        Optional.of(QueryType.FILTER_AND_LIST),
+                        QueryType.FILTER_AND_LIST.name(),
+                        ClassifierStatus.OK,
+                        StructuredRewriteResult.identityFallback(q, null),
+                        EntityExtractionResult.emptyWithNote(null));
+
+        assertThat(out.status()).isEqualTo(AmbiguityStatus.SUFFICIENT);
+    }
+
+    @Test
+    void assess_detectsIncompleteTrailingPreposition_q6() {
+        DefaultAmbiguityAssessmentService sut = new DefaultAmbiguityAssessmentService();
+
+        AmbiguityAssessment out =
+                sut.assess(
+                        new NormalizedQuery("raw", "qué se habla de cámaras en ?", List.of()),
+                        Optional.of(QueryType.FIND_PARAGRAPH),
+                        QueryType.FIND_PARAGRAPH.name(),
+                        ClassifierStatus.OK,
+                        StructuredRewriteResult.identityFallback("qué se habla de cámaras en ?", null),
+                        EntityExtractionResult.emptyWithNote(null));
+
+        assertThat(out.status()).isEqualTo(AmbiguityStatus.MISSING_INFORMATION);
+        assertThat(out.missingFields()).contains("time_reference");
+    }
+
+    @Test
+    void assess_detectsIncompleteCountFilter_q7() {
+        DefaultAmbiguityAssessmentService sut = new DefaultAmbiguityAssessmentService();
+
+        AmbiguityAssessment out =
+                sut.assess(
+                        new NormalizedQuery("raw", "cuenta las actas en las que", List.of()),
+                        Optional.of(QueryType.COUNT_DOCUMENTS),
+                        QueryType.COUNT_DOCUMENTS.name(),
+                        ClassifierStatus.OK,
+                        StructuredRewriteResult.identityFallback("cuenta las actas en las que", null),
+                        EntityExtractionResult.emptyWithNote(null));
+
+        assertThat(out.status()).isEqualTo(AmbiguityStatus.MISSING_INFORMATION);
+        assertThat(out.missingFields()).contains("filter_condition");
+    }
 }
 

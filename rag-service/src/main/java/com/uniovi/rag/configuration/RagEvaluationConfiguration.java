@@ -6,6 +6,8 @@ import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import com.uniovi.rag.infrastructure.observability.TracedEvaluationService;
+import com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeLlmExecutor;
+import com.uniovi.rag.application.service.llm.LlmErrorComposer;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.application.service.knowledge.document.DocumentService;
 import com.uniovi.rag.application.service.evaluation.ReferenceBundleMinuteEvaluationService;
@@ -36,7 +38,7 @@ public class RagEvaluationConfiguration {
         ChatClient chatClient,
         PgVectorStore vectorStore,
         JdbcTemplate jdbcTemplate,
-        @Value("${spring.ai.ollama.top-k:80}") int topK,
+        @Value("${spring.ai.ollama.top-k:8}") int topK,
         @Value("${spring.ai.ollama.similarity-threshold:0.25}") double similarityThreshold,
         @Value("${rag.classifier.service.url:http://localhost:8000}") String classifierServiceUrl,
         @Value("${rag.classifier.model-id:default}") String classifierModelId,
@@ -53,7 +55,9 @@ public class RagEvaluationConfiguration {
         RagExecutionOrchestrator ragExecutionOrchestrator,
         RuntimeTracePersistenceService runtimeTracePersistenceService,
         ChatGenerationModelSelector chatGenerationModelSelector,
-        @Value("${knowledge.v2.chat-overlay.enabled:false}") boolean knowledgeChatOverlayEnabled
+        @Value("${knowledge.v2.chat-overlay.enabled:false}") boolean knowledgeChatOverlayEnabled,
+        EvaluationJudgeLlmExecutor evaluationJudgeLlmExecutor,
+        LlmErrorComposer llmErrorComposer
     ) {
         EvaluationServiceFactory.Settings settings =
                 new EvaluationServiceFactory.Settings(
@@ -79,7 +83,9 @@ public class RagEvaluationConfiguration {
                 executionContextFactory,
                 ragExecutionOrchestrator,
                 runtimeTracePersistenceService,
-                chatGenerationModelSelector);
+                chatGenerationModelSelector,
+                evaluationJudgeLlmExecutor,
+                llmErrorComposer);
     }
 
     @Bean
@@ -90,6 +96,7 @@ public class RagEvaluationConfiguration {
         DocumentService documentService,
         QueryExecutionService queryService,
         EvaluationServiceFactory evaluationServiceFactory,
+        EvaluationJudgeLlmExecutor evaluationJudgeLlmExecutor,
         @Value("${evaluation.clean-before-load:true}") boolean cleanBeforeLoad,
         @Autowired(required = false) ObservabilitySupport observability
     ) {
@@ -100,7 +107,8 @@ public class RagEvaluationConfiguration {
                         chatClient,
                         documentService,
                         queryService,
-                        cleanBeforeLoad);
+                        cleanBeforeLoad,
+                        evaluationJudgeLlmExecutor);
         service.setEvaluationServiceFactory(evaluationServiceFactory);
         if (observability != null) {
             return new TracedEvaluationService(service, observability);

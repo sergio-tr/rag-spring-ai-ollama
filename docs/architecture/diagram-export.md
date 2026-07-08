@@ -29,6 +29,8 @@ Suggested grouping for the documentation outline: **context** → **services** �
 | [observability-states.mmd](observability-states.mmd) | When OTLP is active |
 | [rag-request-flow.mmd](rag-request-flow.mmd) | RAG path Spring |
 | [backend-logical-layers.mmd](backend-logical-layers.mmd) | Backend package families application domain infrastructure |
+| [backend-package-diagram.puml](backend-package-diagram.puml) | Thesis UML package diagram (PlantUML source) |
+| [backend-package-diagram.drawio](backend-package-diagram.drawio) | Thesis UML package diagram (draw.io, section 7.2) |
 | [security-api-boundaries.mmd](security-api-boundaries.mmd) | Public JWT admin |
 
 ## Export with Mermaid CLI
@@ -65,7 +67,7 @@ done
 
 ## Captions
 
-Suggested pattern for documentation: **Figure N —** short title; one sentence in the body referencing this repo path (`docs/architecture/<file>.mmd`) for reproducibility.
+Suggested pattern for documentation: **Figure N -** short title; one sentence in the body referencing this repo path (`docs/architecture/<file>.mmd`) for reproducibility.
 
 ## Related
 

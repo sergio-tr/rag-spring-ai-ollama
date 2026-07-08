@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
 
 /**
@@ -75,10 +76,13 @@ describe("OAuth CTA locale-prefix regression", () => {
   });
 
   it("LoginForm OAuth CTA href stays /api/v5/auth/oauth/google/start (no locale prefix), even when <Link> would have prepended one", () => {
+    const queryClient = new QueryClient();
     render(
-      <IntlTestProvider locale="en">
-        <LoginForm />
-      </IntlTestProvider>,
+      <QueryClientProvider client={queryClient}>
+        <IntlTestProvider locale="en">
+          <LoginForm />
+        </IntlTestProvider>
+      </QueryClientProvider>,
     );
     const cta = screen.getByTestId("oauth-google-cta");
     expect(cta.tagName).toBe("A");
@@ -87,10 +91,13 @@ describe("OAuth CTA locale-prefix regression", () => {
   });
 
   it("RegisterForm OAuth CTA href stays /api/v5/auth/oauth/google/start (no locale prefix), even when <Link> would have prepended one", () => {
+    const queryClient = new QueryClient();
     render(
-      <IntlTestProvider locale="en">
-        <RegisterForm />
-      </IntlTestProvider>,
+      <QueryClientProvider client={queryClient}>
+        <IntlTestProvider locale="en">
+          <RegisterForm />
+        </IntlTestProvider>
+      </QueryClientProvider>,
     );
     const cta = screen.getByTestId("oauth-google-cta");
     expect(cta.tagName).toBe("A");

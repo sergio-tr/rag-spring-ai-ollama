@@ -36,7 +36,7 @@ export type LabEvaluationCorpusPanelProps = {
   onCorpusIdChange: (corpusId: string | null) => void;
   /** Optional project to reuse documents from (not required). */
   optionalProjectId?: string | null;
-  /** Document-centric Lab RAG flow — hides project attach and manual index preparation. */
+  /** Document-centric Lab RAG flow - hides project attach and manual index preparation. */
   documentCentric?: boolean;
   /** Called after refresh completes (e.g. to refetch latest run state). */
   onRefreshed?: () => void;
@@ -512,7 +512,7 @@ export function LabEvaluationCorpusPanel({
               data-testid={`lab-corpus-document-${d.id}`}
             >
               <span className="min-w-0 truncate">
-                {d.fileName} —{" "}
+                {d.fileName} -{" "}
                 <span
                   data-testid={`lab-corpus-doc-status-${d.id}`}
                   data-ingestion-state={d.status}

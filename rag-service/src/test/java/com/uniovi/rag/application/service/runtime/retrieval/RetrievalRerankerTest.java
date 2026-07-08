@@ -87,6 +87,108 @@ class RetrievalRerankerTest {
         assertThat(result.candidates().getFirst().candidateId()).isEqualTo(exactDate.candidateId());
     }
 
+    @Test
+    void rerank_tieBreaksTowardLowerDistanceNotHigher() {
+        // Phase 4.4 score-semantics audit: RetrievalCandidate.denseScore() carries the raw pgvector cosine
+        // "distance" (lower = more similar), so when the composite rerank score ties, the tie-break must
+        // prefer the *lower*-distance (more similar) candidate, not the higher-distance one.
+        UUID s = UUID.randomUUID();
+        RetrievalRequest req = fusionRequest();
+        RetrievalCandidate farther =
+                new RetrievalCandidate(
+                        s + ":a:0",
+                        "x",
+                        Map.of("document_id", "a", "indexSnapshotId", s.toString()),
+                        0.9,
+                        Double.NaN,
+                        1,
+                        0,
+                        s,
+                        0.05);
+        RetrievalCandidate closer =
+                new RetrievalCandidate(
+                        s + ":b:0",
+                        "y",
+                        Map.of("document_id", "b", "indexSnapshotId", s.toString()),
+                        0.2,
+                        Double.NaN,
+                        2,
+                        0,
+                        s,
+                        0.05);
+        QueryPlan plan = minimalPlan(List.of());
+
+        var result = reranker.rerank(req, plan, List.of(farther, closer));
+
+        assertThat(result.candidates().getFirst().candidateId()).isEqualTo(closer.candidateId());
+    }
+
+    @Test
+    void rerank_boostsParticipantsSectionForAttendeeListQuery() {
+        UUID s = UUID.randomUUID();
+        RetrievalRequest req = fusionRequest("cuales son los asistentes del acta 3?");
+        RetrievalCandidate header =
+                new RetrievalCandidate(
+                        s + ":h:0",
+                        "Fecha: 25 de febrero de 2025",
+                        Map.of("document_id", "a", "sectionType", "header", "chunk_index", 0),
+                        0.1,
+                        Double.NaN,
+                        1,
+                        0,
+                        s,
+                        0.2);
+        RetrievalCandidate participants =
+                new RetrievalCandidate(
+                        s + ":p:1",
+                        "• Ana\n• Luis",
+                        Map.of("document_id", "a", "sectionType", "participants", "chunk_index", 1),
+                        0.2,
+                        Double.NaN,
+                        2,
+                        0,
+                        s,
+                        0.65);
+        QueryPlan plan = minimalPlan(List.of());
+
+        var result = reranker.rerank(req, plan, List.of(header, participants));
+
+        assertThat(result.candidates().getFirst().candidateId()).isEqualTo(participants.candidateId());
+    }
+
+    @Test
+    void rerank_boostsAgendaSectionForTopicQuery() {
+        UUID s = UUID.randomUUID();
+        RetrievalRequest req = fusionRequest("en qué actas se habla sobre cámaras de seguridad");
+        RetrievalCandidate header =
+                new RetrievalCandidate(
+                        s + ":h:0",
+                        "ACTA 2 - Fecha 2025",
+                        Map.of("document_id", "a", "sectionType", "header", "chunk_index", 0),
+                        0.1,
+                        Double.NaN,
+                        1,
+                        0,
+                        s,
+                        0.9);
+        RetrievalCandidate agenda =
+                new RetrievalCandidate(
+                        s + ":a:2",
+                        "Instalación de cámaras de videovigilancia en zonas comunes",
+                        Map.of("document_id", "a", "sectionType", "agenda", "chunk_index", 2),
+                        0.2,
+                        Double.NaN,
+                        2,
+                        0,
+                        s,
+                        0.65);
+        QueryPlan plan = minimalPlan(List.of());
+
+        var result = reranker.rerank(req, plan, List.of(header, agenda));
+
+        assertThat(result.candidates().getFirst().candidateId()).isEqualTo(agenda.candidateId());
+    }
+
     private static RetrievalRequest fusionRequest() {
         return fusionRequest("q");
     }

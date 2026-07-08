@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.routing;
 
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceEvaluator;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.query.AmbiguityStatus;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
@@ -29,14 +30,21 @@ public class RouteCapabilityEvaluator {
 
         boolean directWorkflowValid = true;
 
-        boolean deterministicToolsEligible = rag.toolsEnabled() && ambiguitySufficient;
+        boolean structuredToolRouteApplicable = structuredToolRouteApplicable(plan);
+        boolean deterministicToolsEligible =
+                rag.toolsEnabled() && ambiguitySufficient && structuredToolRouteApplicable;
         if (!rag.toolsEnabled()) {
             reasons.add("toolsEnabled=false");
+        } else if (ambiguitySufficient && !structuredToolRouteApplicable) {
+            reasons.add("deterministic_tools_not_applicable");
         }
 
-        boolean functionCallingEligible = rag.functionCallingEnabled() && ambiguitySufficient;
+        boolean functionCallingEligible =
+                rag.functionCallingEnabled() && ambiguitySufficient && structuredToolRouteApplicable;
         if (!rag.functionCallingEnabled()) {
             reasons.add("functionCallingEnabled=false");
+        } else if (ambiguitySufficient && !structuredToolRouteApplicable) {
+            reasons.add("function_calling_not_applicable");
         }
 
         boolean advisorEligible = rag.useAdvisor() && rag.useRetrieval() && ambiguitySufficient;
@@ -55,6 +63,11 @@ public class RouteCapabilityEvaluator {
                 functionCallingEligible,
                 advisorEligible,
                 List.copyOf(reasons));
+    }
+
+    private static boolean structuredToolRouteApplicable(QueryPlan plan) {
+        DeterministicToolEvidenceEvaluator.Evaluation evaluation = DeterministicToolEvidenceEvaluator.evaluate(plan);
+        return evaluation.toolApplicabilityEligible() && !evaluation.matchedKinds().isEmpty();
     }
 
     public record RouteCapabilities(

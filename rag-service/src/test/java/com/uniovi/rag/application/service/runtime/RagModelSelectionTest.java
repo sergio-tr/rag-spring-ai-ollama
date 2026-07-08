@@ -2,12 +2,14 @@ package com.uniovi.rag.application.service.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.application.exception.llm.LlmConfigurationException;
 import com.uniovi.rag.application.port.llm.LlmChatClient;
 import com.uniovi.rag.application.port.llm.LlmChatRequest;
 import com.uniovi.rag.application.port.llm.LlmChatResponse;
@@ -15,7 +17,9 @@ import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
 import com.uniovi.rag.application.service.llm.catalog.LlmModelCatalogService;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
+import com.uniovi.rag.application.service.runtime.llm.RagChatModelRoutingService;
 import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
+import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvokerTestSupport;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
@@ -53,6 +57,8 @@ class RagModelSelectionTest {
             LlmModelCatalogTestSupport.catalogFrom(LlmModelCatalogTestSupport.openAiLiteLlmProperties());
     private final ChatGenerationModelSelector chatGenerationModelSelector =
             new ChatGenerationModelSelector(modelCatalog);
+    private final RagChatModelRoutingService chatModelRoutingService =
+            new RagChatModelRoutingService(modelCatalog);
     private final ResolvedLlmConfigResolver configResolver = mock(ResolvedLlmConfigResolver.class);
     private final LlmClientResolver clientResolver = mock(LlmClientResolver.class);
     private final LlmChatClient chatClient = mock(LlmChatClient.class);
@@ -64,9 +70,11 @@ class RagModelSelectionTest {
                 new RagLlmChatInvoker(
                         clientResolver,
                         configResolver,
+                        RagLlmChatInvokerTestSupport.passthroughFinalAnswerResolver(),
                         objectMapper,
                         chatGenerationModelSelector,
-                        modelCatalog);
+                        modelCatalog,
+                        chatModelRoutingService);
     }
 
     @AfterEach
@@ -129,12 +137,10 @@ class RagModelSelectionTest {
 
         ExecutionContext ctx = executionContextWithLegacyRagChatModel("llama3.1:8b", "mxbai-embed-large:latest");
 
-        ragInvoker.invoke(ctx, "RAG", "hola");
-
-        assertEquals(
-                "llama3.1:8b",
-                capturedChatRequest().model(),
-                "OLLAMA_NATIVE may fall back to legacy RagConfig.llmModel when resolved model is not catalog-valid");
+        assertThrows(
+                LlmConfigurationException.class,
+                () -> ragInvoker.invoke(ctx, "RAG", "hola"),
+                "OLLAMA_NATIVE catalog strict validation rejects models not registered for CHAT");
     }
 
     private LlmChatRequest capturedChatRequest() {

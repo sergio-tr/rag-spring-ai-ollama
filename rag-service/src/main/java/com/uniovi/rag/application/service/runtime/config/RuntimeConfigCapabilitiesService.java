@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.config;
 
+import com.uniovi.rag.application.service.chat.MaterializationFeatureGateService;
 import com.uniovi.rag.application.result.runtime.RuntimeConfigCapabilities;
 import com.uniovi.rag.application.result.runtime.RuntimeConfigCapability;
 import java.util.ArrayList;
@@ -40,7 +41,7 @@ public class RuntimeConfigCapabilitiesService {
         out.add(runtimeToggle(
                 "expansionEnabled",
                 "Query expansion",
-                "Optional query expansion before retrieval/tool routing.",
+                "Expands or rewrites the user query before routing, tools, retrieval, or final generation.",
                 30,
                 List.of(),
                 List.of()));

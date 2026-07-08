@@ -40,6 +40,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import com.uniovi.rag.application.service.knowledge.LabIndexProfileOverrideFactory;
 import com.uniovi.rag.configuration.RagIndexingEmbeddingProperties;
+import com.uniovi.rag.domain.llm.LlmProvider;
 
 @ExtendWith(MockitoExtension.class)
 class KnowledgePipelineOrchestratorTest {
@@ -57,9 +58,32 @@ class KnowledgePipelineOrchestratorTest {
     @Mock private EmbeddingSpaceGuard embeddingSpaceGuard;
     @Mock private KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
     @Mock private EmbeddingIndexCompatibilityService embeddingIndexCompatibilityService;
+    @Mock private ProjectIndexProfileResolver projectIndexProfileResolver;
     @Mock private PlatformTransactionManager transactionManager;
 
+    private void stubIngestionResolver() {
+        lenient()
+                .when(projectIndexProfileResolver.resolveForIngestion(any(UUID.class), any(ProjectIndexProfile.class)))
+                .thenAnswer(
+                        inv -> {
+                            UUID projectId = inv.getArgument(0);
+                            ProjectIndexProfile profile = inv.getArgument(1);
+                            Map<String, Object> jsonb = new LinkedHashMap<>(profile.toSnapshotJsonb());
+                            jsonb.put(IndexProfileJsonSupport.EMBEDDING_MODEL_ID_KEY, profile.embeddingModelId());
+                            jsonb.put(
+                                    IndexProfileJsonSupport.EMBEDDING_PROVIDER_KEY,
+                                    LlmProvider.OLLAMA_NATIVE.name());
+                            return new ProjectIndexProfileResolver.ResolvedIngestionIndexProfile(
+                                    projectId,
+                                    profile.embeddingModelId(),
+                                    profile.embeddingModelId(),
+                                    LlmProvider.OLLAMA_NATIVE,
+                                    jsonb);
+                        });
+    }
+
     private EmbeddingIndexCompatibilityService compatibilityForTests() {
+        stubIngestionResolver();
         lenient()
                 .when(embeddingIndexCompatibilityService.enrichIndexProfile(any()))
                 .thenAnswer(
@@ -68,6 +92,21 @@ class KnowledgePipelineOrchestratorTest {
                             Map<String, Object> enriched = new LinkedHashMap<>(base != null ? base : Map.of());
                             enriched.putIfAbsent("embeddingModelId", "mxbai-embed-large");
                             enriched.putIfAbsent("embeddingProvider", "OLLAMA_NATIVE");
+                            return enriched;
+                        });
+        lenient()
+                .when(embeddingIndexCompatibilityService.enrichIndexProfileForIngestion(any(), any()))
+                .thenAnswer(
+                        inv -> {
+                            ProjectIndexProfileResolver.ResolvedIngestionIndexProfile ingestion = inv.getArgument(1);
+                            Map<String, Object> base = inv.getArgument(0);
+                            Map<String, Object> enriched = new LinkedHashMap<>(base != null ? base : Map.of());
+                            enriched.put(
+                                    IndexProfileJsonSupport.EMBEDDING_MODEL_ID_KEY,
+                                    ingestion.resolvedEmbeddingModel());
+                            enriched.put(
+                                    IndexProfileJsonSupport.EMBEDDING_PROVIDER_KEY,
+                                    ingestion.embeddingProvider().name());
                             return enriched;
                         });
         return embeddingIndexCompatibilityService;
@@ -105,6 +144,7 @@ class KnowledgePipelineOrchestratorTest {
                         defaultEmbeddingGuard(),
                         knowledgeIndexSnapshotRepository,
                         compatibilityForTests(),
+                        projectIndexProfileResolver,
                         transactionManager,
                         null);
 
@@ -132,6 +172,7 @@ class KnowledgePipelineOrchestratorTest {
                         defaultEmbeddingGuard(),
                         knowledgeIndexSnapshotRepository,
                         compatibilityForTests(),
+                        projectIndexProfileResolver,
                         transactionManager,
                         null);
 
@@ -164,6 +205,7 @@ class KnowledgePipelineOrchestratorTest {
                         defaultEmbeddingGuard(),
                         knowledgeIndexSnapshotRepository,
                         compatibilityForTests(),
+                        projectIndexProfileResolver,
                         transactionManager,
                         null);
 

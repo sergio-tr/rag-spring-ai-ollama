@@ -4,11 +4,11 @@ This document records **where** each module writes coverage output after the can
 
 **Quality baseline hub** (exclusions matrix, Sonar baseline, coverage strategy): [../quality/README.md](../quality/README.md).
 
-**Coverage Target Ledger** (Wave 6.01+ — JaCoCo exclude census, `target_wave` per row, Sonar parity, and the **Residual final allowlist** in the Wave 6.09 section): [jacoco-coverage-target-ledger.md](jacoco-coverage-target-ledger.md).
+**Coverage Target Ledger** (Wave 6.01+ - JaCoCo exclude census, `target_wave` per row, Sonar parity, and the **Residual final allowlist** in the Wave 6.09 section): [jacoco-coverage-target-ledger.md](jacoco-coverage-target-ledger.md).
 
-**External test harness** (Wave 6.02 — mocks for Ollama, classifier, OTLP): [../testing/external-test-harness.md](../testing/external-test-harness.md).
+**External test harness** (Wave 6.02 - mocks for Ollama, classifier, OTLP): [../testing/external-test-harness.md](../testing/external-test-harness.md).
 
-**Heavy JaCoCo / Sonar excludes — per-package exit contract** (test tiers, gate, prerequisites): [../testing/rag-service-heavy-package-coverage-exit-contracts.md](../testing/rag-service-heavy-package-coverage-exit-contracts.md).
+**Heavy JaCoCo / Sonar excludes - per-package exit contract** (test tiers, gate, prerequisites): [../testing/rag-service-heavy-package-coverage-exit-contracts.md](../testing/rag-service-heavy-package-coverage-exit-contracts.md).
 
 ## Commands and outputs
 
@@ -18,7 +18,7 @@ This document records **where** each module writes coverage output after the can
 | **classifier-service** | `pytest` (uses `pytest.ini` / `.coveragerc`) | `classifier-service/htmlcov/index.html`, `classifier-service/coverage.xml` |
 | **webapp** | `npm run test:coverage` | `webapp/coverage/index.html`, `webapp/coverage/lcov.info` |
 
-## Gaps snapshot (sub-threshold packages — illustrative)
+## Gaps snapshot (sub-threshold packages - illustrative)
 
 Figures change with every run; use the HTML reports for the current numbers.
 

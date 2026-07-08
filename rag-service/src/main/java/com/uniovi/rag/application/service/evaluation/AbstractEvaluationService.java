@@ -18,6 +18,9 @@ import com.uniovi.rag.application.service.evaluation.preset.CampaignParentOutcom
 import com.uniovi.rag.application.service.evaluation.preset.LabBenchmarkExecutionContext;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolBenchmarkContext;
 import com.uniovi.rag.application.service.knowledge.document.DocumentService;
+import com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeCallResult;
+import com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeException;
+import com.uniovi.rag.application.service.evaluation.judge.EvaluationJudgeLlmExecutor;
 import com.uniovi.rag.application.service.runtime.ChatExecutionTelemetryMapper;
 import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
 import com.uniovi.rag.application.service.runtime.execution.QueryExecutionService;
@@ -52,6 +55,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
     private static final String KEY_MEAN_CONTEXT_SUFFICIENCY = "mean_context_sufficiency";
 
     protected final ChatClient chatClient;
+    protected final EvaluationJudgeLlmExecutor evaluationJudgeLlmExecutor;
     protected final DocumentService documentService;
     protected final QueryExecutionService queryService;
     protected final RagFeatureConfiguration featureConfig;
@@ -63,59 +67,8 @@ public abstract class AbstractEvaluationService implements EvaluationService {
     // For dynamic evaluation with custom configurations
     protected EvaluationServiceFactory evaluationServiceFactory;
 
-    protected static final PromptTemplate EVALUATION_PROMPT_TEMPLATE = new PromptTemplate("""
-        Act as an expert evaluator of RAG (Retrieval-Augmented Generation) systems. 
-        Assess the quality of a generated answer by determining if it correctly answers the question.
-        
-        **CRITICAL EVALUATION PRINCIPLES (BE STRICT)**:
-        1. **Correctness 5 only when fully correct**: Score 5 ONLY if the answer has all key facts correct and adds NO wrong facts. One correct fact plus one wrong fact (e.g. two dates when only one is correct) = at most 4, not 5.
-        2. **Lists and enumerated answers**: If the expected answer specifies a set (e.g. one minute, two dates, "none") and the generated answer adds extra or wrong items, Correctness at most 4 (or 3 if more wrong than right). Expected "one date" and generated "date A and date B" with one wrong → not 5.
-        3. **"No information found" / "None"**: If the expected answer says no information was found (e.g. no matching minutes) and the generated answer invents or lists content, Correctness MUST be 1 or 2 and Groundedness 1 or 2.
-        4. **Yes/No questions**: If the generated answer contradicts the expected Yes/No, Correctness MUST be 1 or 2.
-        5. **Comparison questions**: If the conclusion is opposite to the expected (e.g. expected "August" but generated "February"), Correctness at most 2 or 3.
-        6. **Context understanding**: If asked for a specific fact (e.g. which acta, duration), the answer must contain that information; partial or wrong set of items reduces the score.
-        
-        **IMPORTANT**: Do not invent or use any external knowledge. 
-        Evaluate only what can be inferred from the three provided inputs: the question, the expected correct answer (as a guide), and the system-generated answer.
-        
-        Question: {question}
-        Expected Correct Answer (GUIDE ONLY - not required to match exactly): {correctAnswer}
-        System-Generated Answer: {generatedAnswer}
-        
-        Evaluate the following criteria on a scale from 1 to 5:
-        
-        1. **Correctness**: Does the answer correctly respond to what the question is asking? 
-           - Consider if the essential information requested is present, even if formatted differently.
-           - Do NOT penalize for missing details that weren't explicitly asked for in the question.
-           - Example: If asked "Which acta?", answering with the date is correct, even if duration details are missing.
-        
-        2. **Context Sufficiency**: Is it possible to answer correctly with the information provided?
-        
-        3. **Relevance**: Does the answer address what was asked, without unnecessary digressions?
-           - A shorter answer that directly answers the question is better than a longer one with irrelevant details.
-        
-        4. **Independence**: Can the answer be understood on its own, without relying on additional context?
-        
-        5. **Groundedness (Fidelity)**: Does the answer rely only on the provided context, without inventing facts? Score 1–5 (1 = invented/unsupported, 5 = fully grounded in context).
-        
-        **Strict Scoring Guidelines**:
-        - Score 5 ONLY when the answer is fully correct: all key facts present, no wrong or extra facts added. One correct fact plus one wrong fact = at most 4.
-        - If the expected answer lists a specific number of items (e.g. one acta, two dates) and the generated answer includes extra or wrong items, Correctness at most 4 (or 3 if more wrong than right).
-        - If expected says "none"/"ninguna"/"no information found" and generated invents or lists content, Correctness 1 or 2, Groundedness 1 or 2.
-        - Yes/No contradiction → Correctness 1 or 2.
-        - Score 4 only when essential information is correct and at most minor, non-contradictory extras.
-        - Score 3 when partially correct but with missing or wrong important information.
-        - Score 1-2 when incorrect, contradictory, irrelevant, or inventing content.
-        
-        Respond in this format:
-        
-        Correctness: [1-5] - Justification: [Focus on whether the answer responds to the question, not word matching]
-        Context Sufficiency: [1-5] - Justification: ...
-        Relevance: [1-5] - Justification: ...
-        Independence: [1-5] - Justification: ...
-        Groundedness: [1-5] - Justification: [Whether the answer relies only on context without inventing facts]
-        Overall Summary: [Brief overall assessment focusing on whether the answer correctly responds to the question]
-        """);
+    protected static final PromptTemplate EVALUATION_PROMPT_TEMPLATE =
+            new PromptTemplate(EvaluationJudgePromptSources.TEMPLATE_RAW);
 
     // --- LLM evaluation parsing and metric computation ---
     protected static final int BLEU_MAX_N = 4;
@@ -147,16 +100,29 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         ChatClient chatClient,
         DocumentService documentService,
         QueryExecutionService queryService,
-        boolean cleanBeforeLoad
+        boolean cleanBeforeLoad,
+        EvaluationJudgeLlmExecutor evaluationJudgeLlmExecutor
     ) {
         this.featureConfig = featureConfig;
         this.implementationProperties = implementationProperties != null
                 ? implementationProperties
                 : new RagImplementationProperties();
         this.chatClient = chatClient;
+        this.evaluationJudgeLlmExecutor = evaluationJudgeLlmExecutor;
         this.documentService = documentService;
         this.queryService = queryService;
         this.cleanBeforeLoad = cleanBeforeLoad;
+    }
+
+    protected AbstractEvaluationService(
+        RagFeatureConfiguration featureConfig,
+        RagImplementationProperties implementationProperties,
+        ChatClient chatClient,
+        DocumentService documentService,
+        QueryExecutionService queryService,
+        boolean cleanBeforeLoad
+    ) {
+        this(featureConfig, implementationProperties, chatClient, documentService, queryService, cleanBeforeLoad, null);
     }
 
     @Override
@@ -173,7 +139,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
      */
     public void loadDataWithConfiguration(RagFeatureConfiguration config) {
         if (LabBenchmarkExecutionContext.currentLabRuntimeContext().isPresent()) {
-            log().debug("Skipping evaluation document reload — Lab evaluation corpus is already bound");
+            log().debug("Skipping evaluation document reload - Lab evaluation corpus is already bound");
             dataLoaded = true;
             return;
         }
@@ -253,9 +219,16 @@ public abstract class AbstractEvaluationService implements EvaluationService {
             QueryResponse queryResponse = queryServiceToUse.generateResponse(questionText);
             String llmResponse =
                     queryResponse != null && queryResponse.getAnswer() != null ? queryResponse.getAnswer() : "";
-            String evaluation = evaluateResponse(questionText, correctAnswer, llmResponse);
+            EvaluationJudgeCallResult judgeResult =
+                    evaluateJudgeWithDegradation(questionText, correctAnswer, llmResponse);
             LlmJudgeItemResult result =
-                    buildEvalQuestionResult(questionText, correctAnswer, llmResponse, evaluation, queryResponse)
+                    buildEvalQuestionResult(
+                                    questionText,
+                                    correctAnswer,
+                                    llmResponse,
+                                    judgeResult.content(),
+                                    queryResponse,
+                                    judgeResult)
                             .datasetQuestionId(q.id())
                             .itemOutcome(BenchmarkItemOutcome.EXECUTED)
                             .build();
@@ -302,9 +275,16 @@ public abstract class AbstractEvaluationService implements EvaluationService {
                 String llmResponse =
                         queryResponse != null && queryResponse.getAnswer() != null ? queryResponse.getAnswer() : "";
                 CampaignParentOutcomeRecorder.maybeRecord(q.id(), queryResponse, llmResponse);
-                String evaluation = evaluateResponse(questionText, correctAnswer, llmResponse);
+                EvaluationJudgeCallResult judgeResult =
+                        evaluateJudgeWithDegradation(questionText, correctAnswer, llmResponse);
                 LlmJudgeItemResult.Builder builder =
-                        buildEvalQuestionResult(questionText, correctAnswer, llmResponse, evaluation, queryResponse)
+                        buildEvalQuestionResult(
+                                        questionText,
+                                        correctAnswer,
+                                        llmResponse,
+                                        judgeResult.content(),
+                                        queryResponse,
+                                        judgeResult)
                                 .datasetQuestionId(q.id())
                                 .itemOutcome(BenchmarkItemOutcome.EXECUTED)
                                 .latencyMs(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0))
@@ -321,12 +301,13 @@ public abstract class AbstractEvaluationService implements EvaluationService {
                 resultsForPrompt.add(result);
                 logEvalQuestion(questionText, queryResponse, result);
             } catch (RuntimeException ex) {
+                String partialAnswer = "";
                 LlmJudgeItemResult.Builder builder =
-                        buildEvalQuestionResult(questionText, correctAnswer, "", "", null)
+                        buildEvalQuestionResult(questionText, correctAnswer, partialAnswer, "", null, null)
                                 .datasetQuestionId(q.id())
                                 .itemOutcome(BenchmarkItemOutcome.FAILED)
                                 .latencyMs(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0))
-                                .errorCode(ex.getClass().getSimpleName())
+                                .errorCode(ex instanceof EvaluationJudgeException judgeEx ? judgeEx.errorCode() : ex.getClass().getSimpleName())
                                 .errorMessage(
                                         ex.getMessage() != null && !ex.getMessage().isBlank()
                                                 ? ex.getMessage()
@@ -382,6 +363,17 @@ public abstract class AbstractEvaluationService implements EvaluationService {
             String llmResponse,
             String evaluation,
             QueryResponse queryResponse) {
+        return buildEvalQuestionResult(question, correctAnswer, llmResponse, evaluation, queryResponse, null);
+    }
+
+    private static LlmJudgeItemResult.Builder buildEvalQuestionResult(
+            String question,
+            String correctAnswer,
+            String llmResponse,
+            String evaluation,
+            QueryResponse queryResponse,
+            EvaluationJudgeCallResult judgeResult) {
+        Map<String, Object> labMetrics = judgeMetricsPayload(judgeResult);
         return LlmJudgeItemResult.builder()
                 .question(question)
                 .correctAnswer(correctAnswer)
@@ -392,7 +384,37 @@ public abstract class AbstractEvaluationService implements EvaluationService {
                         queryResponse != null && queryResponse.getQueryType() != null
                                 ? queryResponse.getQueryType().name()
                                 : null)
-                .usedTool(queryResponse != null && queryResponse.isUsedTool());
+                .usedTool(queryResponse != null && queryResponse.isUsedTool())
+                .labMetricsPayload(labMetrics);
+    }
+
+    private static Map<String, Object> judgeMetricsPayload(EvaluationJudgeCallResult judgeResult) {
+        if (judgeResult == null || !judgeResult.judgeFailed()) {
+            return Map.of();
+        }
+        Map<String, Object> metrics = new LinkedHashMap<>();
+        metrics.put(BenchmarkResultRowKeys.JUDGE_STATUS, EvaluationJudgeCallResult.STATUS_FAILED);
+        if (judgeResult.judgeFailureReason() != null && !judgeResult.judgeFailureReason().isBlank()) {
+            metrics.put(BenchmarkResultRowKeys.JUDGE_FAILURE_REASON, judgeResult.judgeFailureReason());
+        }
+        return Map.copyOf(metrics);
+    }
+
+    protected EvaluationJudgeCallResult evaluateJudgeWithDegradation(
+            String question, String correctAnswer, String llmResponse) {
+        String q = question != null ? question : "";
+        String ca = correctAnswer != null ? correctAnswer : "";
+        String gen = llmResponse != null ? llmResponse : "";
+        if (evaluationJudgeLlmExecutor != null) {
+            String prompt = evaluationJudgeLlmExecutor.buildJudgeUserPrompt(q, ca, gen);
+            return evaluationJudgeLlmExecutor.completeJudgeUserPromptResult(prompt);
+        }
+        try {
+            String evaluation = evaluateResponse(q, ca, gen);
+            return EvaluationJudgeCallResult.success(evaluation != null ? evaluation : "");
+        } catch (EvaluationJudgeException ex) {
+            return EvaluationJudgeCallResult.failed(ex.errorCode());
+        }
     }
 
     private void logEvalQuestion(String question, QueryResponse queryResponse, LlmJudgeItemResult result) {
@@ -427,14 +449,13 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         String q = question != null ? question : "";
         String ca = correctAnswer != null ? correctAnswer : "";
         String gen = llmResponse != null ? llmResponse : "";
+        if (evaluationJudgeLlmExecutor != null) {
+            String prompt = evaluationJudgeLlmExecutor.buildJudgeUserPrompt(q, ca, gen);
+            return evaluationJudgeLlmExecutor.completeJudgeUserPrompt(prompt);
+        }
         String prompt = EVALUATION_PROMPT_TEMPLATE.create(
-                Map.of(
-                        "question", q,
-                        "correctAnswer", ca,
-                        "generatedAnswer", gen
-                )
-        ).getContents();
-
+                        Map.of("question", q, "correctAnswer", ca, "generatedAnswer", gen))
+                .getContents();
         return chatClient
                 .prompt()
                 .user(prompt)

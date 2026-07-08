@@ -5,7 +5,7 @@ import { authHeadersFromPage, loginAsSeedUser, productApiUrl } from "../support/
 
 /**
  * Full-stack Lab flows for typed experimental datasets (needs Spring + Next + seed user).
- * Tagged {@link @fullstack} — excluded from default `npm run test:e2e`.
+ * Tagged {@link @fullstack} - excluded from default `npm run test:e2e`.
  */
 test.describe("Lab typed datasets UI @fullstack", () => {
   test.beforeEach(async ({ page }, testInfo) => {
@@ -89,7 +89,7 @@ test.describe("Lab typed datasets UI @fullstack", () => {
     });
     const runBtn = page.getByTestId("lab-llm-run");
     await expect(runBtn).toBeVisible({ timeout: 10_000 });
-    test.skip((await runBtn.isDisabled()) === true, "Run disabled — no compatible typed dataset");
+    test.skip((await runBtn.isDisabled()) === true, "Run disabled - no compatible typed dataset");
     await runBtn.click();
 
     const jobPanel = page.getByTestId("lab-job-panel");

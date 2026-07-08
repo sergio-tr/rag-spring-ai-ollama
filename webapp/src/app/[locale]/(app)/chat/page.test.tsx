@@ -16,8 +16,9 @@ import { ChatToolbarOverflowMenu } from "@/features/chat/components/ChatToolbarO
 import { useChatConfigurationPanelStore } from "@/features/chat/store/chat-configuration-panel.store";
 import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 import ChatPage from "./page";
+import { P3_PRESET_ID, P4_PRESET_ID } from "@/features/chat/lib/preset-product-selection";
 
-/** Stable references — page effects depend on these store actions; new vi.fn() each render would clear optimistic UI every paint. */
+/** Stable references - page effects depend on these store actions; new vi.fn() each render would clear optimistic UI every paint. */
 const chatExplainMocks = vi.hoisted(() => ({
   setLastDone: vi.fn(),
   setStreamingText: vi.fn(),
@@ -228,7 +229,169 @@ let ragPresetsData: {
   system: boolean;
   createdAt: string;
   updatedAt: string;
-}[] = [{ id: "pr1", name: "P", description: null, tags: [], values: {}, system: false, createdAt: "", updatedAt: "" }];
+}[] = [{ id: P3_PRESET_ID, name: "P", description: null, tags: [], values: {}, system: false, createdAt: "", updatedAt: "" }];
+
+function experimentalPresetsFixture() {
+  return [
+    {
+      productPresetId: "cafe0001-0001-4001-8001-000000000014",
+      code: "P4",
+      family: "S2",
+      label: "Chunk + metadata retrieval",
+      description: "Minimal dev preset row",
+      requiredCapabilities: ["USE_RETRIEVAL", "METADATA"],
+      supported: true,
+      supportStatus: "EXECUTABLE",
+      reasonIfUnsupported: null,
+      requiresMultiTurn: false,
+      mapsToRuntimeCapabilities: { code: "P4" },
+      allowedOutcomes: ["EXECUTED", "FAILED", "SKIPPED"],
+      chatSelectable: true,
+      labSelectable: true,
+      labOnly: false,
+    },
+    {
+      productPresetId: "cafe0001-0001-4001-8001-000000000016",
+      code: "P6",
+      family: "S2",
+      label: "P6 preset",
+      description: "Minimal dev preset row",
+      requiredCapabilities: ["USE_RETRIEVAL", "TOOLS"],
+      supported: true,
+      supportStatus: "EXECUTABLE",
+      reasonIfUnsupported: null,
+      requiresMultiTurn: false,
+      mapsToRuntimeCapabilities: { code: "P6" },
+      allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
+      chatSelectable: true,
+      labSelectable: true,
+      labOnly: false,
+    },
+    {
+      productPresetId: "cafe0001-0001-4001-8001-000000000018",
+      code: "P8",
+      family: "S2",
+      label: "P8 preset",
+      description: "Minimal dev preset row",
+      requiredCapabilities: ["USE_RETRIEVAL", "RANKER", "POST_RETRIEVAL"],
+      supported: true,
+      supportStatus: "EXECUTABLE",
+      reasonIfUnsupported: null,
+      requiresMultiTurn: false,
+      mapsToRuntimeCapabilities: { code: "P8" },
+      allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
+      chatSelectable: true,
+      labSelectable: true,
+      labOnly: false,
+    },
+    {
+      productPresetId: "cafe0001-0001-4001-8001-000000000023",
+      code: "P11",
+      family: "S4",
+      label: "Adaptive routing",
+      description: "Minimal dev preset row",
+      requiredCapabilities: ["ADAPTIVE_ROUTING"],
+      supported: true,
+      supportStatus: "EXECUTABLE",
+      reasonIfUnsupported: null,
+      requiresMultiTurn: false,
+      mapsToRuntimeCapabilities: { code: "P11" },
+      allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
+      chatSelectable: true,
+      labSelectable: true,
+      labOnly: false,
+    },
+    {
+      productPresetId: "cafe0001-0001-4001-8001-000000000024",
+      code: "P12",
+      family: "S4",
+      label: "Judge-enhanced",
+      description: "Minimal dev preset row",
+      requiredCapabilities: ["JUDGE"],
+      supported: true,
+      supportStatus: "EXECUTABLE",
+      reasonIfUnsupported: null,
+      requiresMultiTurn: false,
+      mapsToRuntimeCapabilities: { code: "P12" },
+      allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
+      chatSelectable: true,
+      labSelectable: true,
+      labOnly: false,
+    },
+    {
+      productPresetId: "cafe0001-0001-4001-8001-000000000021",
+      code: "P13",
+      family: "S4",
+      label: "Clarification loop",
+      description: "Minimal dev preset row",
+      requiredCapabilities: ["CLARIFICATION"],
+      supported: true,
+      supportStatus: "REQUIRES_MULTI_TURN",
+      reasonIfUnsupported: null,
+      requiresMultiTurn: true,
+      mapsToRuntimeCapabilities: { code: "P13" },
+      allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
+      chatSelectable: true,
+      labSelectable: false,
+      labOnly: false,
+    },
+    {
+      productPresetId: "cafe0001-0001-4001-8001-000000000022",
+      code: "P14",
+      family: "S4",
+      label: "Memory flow",
+      description: "Minimal dev preset row",
+      requiredCapabilities: ["MEMORY"],
+      supported: true,
+      supportStatus: "REQUIRES_MULTI_TURN",
+      reasonIfUnsupported: null,
+      requiresMultiTurn: true,
+      mapsToRuntimeCapabilities: { code: "P14" },
+      allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
+      chatSelectable: true,
+      labSelectable: false,
+      labOnly: false,
+    },
+  ];
+}
+
+function compatiblePresetsFixture(options?: { supportsMetadata?: boolean }) {
+  const supportsMetadata = options?.supportsMetadata ?? false;
+  return {
+    projectId: "p1",
+    effectiveEmbeddingModelId: "mxbai-embed-large",
+    hasActiveIndex: true,
+    readyDocumentCount: 1,
+    activeSnapshotCapabilities: {
+      materializationStrategy: "CHUNK_LEVEL",
+      supportsMetadata,
+      embeddingModelId: "mxbai-embed-large",
+      chunkMaxChars: 400,
+      chunkOverlap: 40,
+    },
+    productPresets: [...ragPresetsData].map((preset) => ({
+      preset,
+      indexRequirements: { requiredMaterializationStrategy: "CHUNK_LEVEL", requiresMetadataSupport: false },
+      compatibility: {
+        selectable: true,
+        disabledReasonCode: null,
+        disabledReason: null,
+        indexRequirements: { requiredMaterializationStrategy: "CHUNK_LEVEL", requiresMetadataSupport: false },
+        compatibleWithActiveIndex: true,
+      },
+    })),
+    experimentalPresets: experimentalPresetsFixture().map((preset) => ({
+      preset,
+      compatibility: {
+        selectable: preset.chatSelectable && preset.supported,
+        disabledReasonCode: null,
+        disabledReason: null,
+        indexRequirements: null,
+        compatibleWithActiveIndex: true,
+      },
+    })),
+  };
+}
 
 vi.mock("@/features/chat/hooks/use-rag-presets", () => ({
   useRagPresets: () => ({
@@ -302,6 +465,37 @@ function patchConversationApiCalls() {
   });
 }
 
+function experimentalPresetById(presetId: string | null | undefined) {
+  if (!presetId) return null;
+  return experimentalPresetsFixture().find((p) => p.productPresetId === presetId) ?? null;
+}
+
+function apiFetchWithMetadataIndex(
+  url: string | { toString(): string },
+  init?: RequestInit,
+): Promise<unknown> {
+  const u = typeof url === "string" ? url : url.toString();
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (method === "GET" && u.includes("/projects/p1/index-profile")) {
+    return Promise.resolve({
+      projectId: "p1",
+      materializationStrategy: "CHUNK_LEVEL",
+      metadataEnabled: true,
+      metadataProfile: null,
+      embeddingModelId: "mxbai-embed-large",
+      chunkMaxChars: 400,
+      chunkOverlap: null,
+      profileHash: "hash",
+      createdAt: "",
+      updatedAt: "",
+    });
+  }
+  if (method === "GET" && u.includes("/compatible-presets")) {
+    return Promise.resolve(compatiblePresetsFixture({ supportsMetadata: true }));
+  }
+  return defaultApiFetch(url, init);
+}
+
 function defaultApiFetch(url: string | { toString(): string }, init?: RequestInit): Promise<unknown> {
   const u = typeof url === "string" ? url : url.toString();
   const method = (init?.method ?? "GET").toUpperCase();
@@ -314,7 +508,10 @@ function defaultApiFetch(url: string | { toString(): string }, init?: RequestIni
     const conversationId = runtimeStateMatch[1];
     const conv = mockConvRows.find((c) => c.id === conversationId) ?? null;
     const selectedPresetId = conv?.presetId ?? null;
-    const effectivePresetId = conv?.effectivePresetId ?? DEFAULT_EFFECTIVE_PRESET_ID;
+    const effectivePresetId =
+      conv?.effectivePresetId === null && conv?.presetId === null
+        ? null
+        : (conv?.effectivePresetId ?? DEFAULT_EFFECTIVE_PRESET_ID);
     const runtimeOverride = conv?.runtimeOverride ?? {};
     const baseEffectiveConfig: Record<string, unknown> = (() => {
       // Minimal runtime-state stub: vary baseEffectiveConfig by selected preset so UI can render
@@ -358,27 +555,40 @@ function defaultApiFetch(url: string | { toString(): string }, init?: RequestIni
       // Default baseline for most tests.
       return {
         useRetrieval: true,
-        rankerEnabled: false,
-        memoryEnabled: false,
       };
     })();
     const effectiveConfig: Record<string, unknown> = { ...baseEffectiveConfig, ...runtimeOverride };
     const manualOverrideKeys = Object.keys(runtimeOverride);
+    const experimentalPreset = experimentalPresetById(selectedPresetId ?? effectivePresetId);
     return Promise.resolve({
       conversationId,
       selectedPresetId,
       effectivePresetId,
-      preset: {
-        kind: selectedPresetId ? "PRODUCT" : "DEFAULT",
-        code: null,
-        label: selectedPresetId ? "Selected preset" : "Recommended Default",
-        chatSelectable: true,
-        supported: true,
-        supportStatus: null,
-        reasonIfUnsupported: null,
-      },
+      preset: experimentalPreset
+        ? {
+            kind: "EXPERIMENTAL" as const,
+            code: experimentalPreset.code,
+            label: experimentalPreset.label,
+            chatSelectable: experimentalPreset.chatSelectable,
+            supported: experimentalPreset.supported,
+            supportStatus: experimentalPreset.supportStatus,
+            reasonIfUnsupported: experimentalPreset.reasonIfUnsupported,
+          }
+        : {
+            kind: selectedPresetId ? ("PRODUCT" as const) : ("DEFAULT" as const),
+            code: null,
+            label: selectedPresetId ? "Selected preset" : "Recommended Default",
+            chatSelectable: true,
+            supported: true,
+            supportStatus: null,
+            reasonIfUnsupported: null,
+          },
       baseEffectiveConfig,
       effectiveConfig,
+      conversationLlmModel: null,
+      conversationClassifierModelId: null,
+      conversationModelsPinned: false,
+      configurationMode: manualOverrideKeys.length > 0 ? ("CUSTOM" as const) : ("PRESET" as const),
       runtimeOverride,
       manualOverrideKeys,
       isCustom: manualOverrideKeys.length > 0,
@@ -408,131 +618,30 @@ function defaultApiFetch(url: string | { toString(): string }, init?: RequestIni
   if (method === "GET" && u.includes("/lab/classifier/models")) {
     return Promise.resolve([]);
   }
-  if (method === "GET" && u.includes("/chat/presets/catalog")) {
+  if (method === "GET" && u.includes("/me/llm/selectable-models")) {
     return Promise.resolve({
-      productPresets: [...ragPresetsData],
-      experimentalPresets: [
+      effectiveProvider: "OLLAMA_NATIVE",
+      models: [
         {
-          productPresetId: "cafe0001-0001-4001-8001-000000000014",
-          code: "P4",
-          family: "S2",
-          label: "Chunk + metadata retrieval",
-          description: "Minimal dev preset row",
-          requiredCapabilities: ["USE_RETRIEVAL", "METADATA"],
-          supported: true,
-          supportStatus: "EXECUTABLE",
-          reasonIfUnsupported: null,
-          requiresMultiTurn: false,
-          mapsToRuntimeCapabilities: { code: "P4" },
-          allowedOutcomes: ["EXECUTED", "FAILED", "SKIPPED"],
-          chatSelectable: true,
-          labSelectable: true,
-          labOnly: false,
-        },
-        {
-          productPresetId: "cafe0001-0001-4001-8001-000000000016",
-          code: "P6",
-          family: "S2",
-          label: "P6 preset",
-          description: "Minimal dev preset row",
-          requiredCapabilities: ["USE_RETRIEVAL", "TOOLS"],
-          supported: true,
-          supportStatus: "EXECUTABLE",
-          reasonIfUnsupported: null,
-          requiresMultiTurn: false,
-          mapsToRuntimeCapabilities: { code: "P6" },
-          allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
-          chatSelectable: true,
-          labSelectable: true,
-          labOnly: false,
-        },
-        {
-          productPresetId: "cafe0001-0001-4001-8001-000000000018",
-          code: "P8",
-          family: "S2",
-          label: "P8 preset",
-          description: "Minimal dev preset row",
-          requiredCapabilities: ["USE_RETRIEVAL", "RANKER", "POST_RETRIEVAL"],
-          supported: true,
-          supportStatus: "EXECUTABLE",
-          reasonIfUnsupported: null,
-          requiresMultiTurn: false,
-          mapsToRuntimeCapabilities: { code: "P8" },
-          allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
-          chatSelectable: true,
-          labSelectable: true,
-          labOnly: false,
-        },
-        {
-          productPresetId: "cafe0001-0001-4001-8001-000000000023",
-          code: "P11",
-          family: "S4",
-          label: "Adaptive routing",
-          description: "Minimal dev preset row",
-          requiredCapabilities: ["ADAPTIVE_ROUTING"],
-          supported: true,
-          supportStatus: "EXECUTABLE",
-          reasonIfUnsupported: null,
-          requiresMultiTurn: false,
-          mapsToRuntimeCapabilities: { code: "P11" },
-          allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
-          chatSelectable: true,
-          labSelectable: true,
-          labOnly: false,
-        },
-        {
-          productPresetId: "cafe0001-0001-4001-8001-000000000024",
-          code: "P12",
-          family: "S4",
-          label: "Judge-enhanced",
-          description: "Minimal dev preset row",
-          requiredCapabilities: ["JUDGE"],
-          supported: true,
-          supportStatus: "EXECUTABLE",
-          reasonIfUnsupported: null,
-          requiresMultiTurn: false,
-          mapsToRuntimeCapabilities: { code: "P12" },
-          allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
-          chatSelectable: true,
-          labSelectable: true,
-          labOnly: false,
-        },
-        {
-          productPresetId: "cafe0001-0001-4001-8001-000000000021",
-          code: "P13",
-          family: "S4",
-          label: "Clarification loop",
-          description: "Minimal dev preset row",
-          requiredCapabilities: ["CLARIFICATION"],
-          supported: true,
-          supportStatus: "REQUIRES_MULTI_TURN",
-          reasonIfUnsupported: null,
-          requiresMultiTurn: true,
-          mapsToRuntimeCapabilities: { code: "P13" },
-          allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
-          chatSelectable: true,
-          labSelectable: false,
-          labOnly: false,
-        },
-        {
-          productPresetId: "cafe0001-0001-4001-8001-000000000022",
-          code: "P14",
-          family: "S4",
-          label: "Memory flow",
-          description: "Minimal dev preset row",
-          requiredCapabilities: ["MEMORY"],
-          supported: true,
-          supportStatus: "REQUIRES_MULTI_TURN",
-          reasonIfUnsupported: null,
-          requiresMultiTurn: true,
-          mapsToRuntimeCapabilities: { code: "P14" },
-          allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
-          chatSelectable: true,
-          labSelectable: false,
-          labOnly: false,
+          modelName: "llama",
+          displayName: "llama",
+          selectable: true,
+          disabledReason: null,
+          disabledReasonCode: null,
+          usableAsDefault: true,
+          runtimeStatus: "AVAILABLE",
         },
       ],
     });
+  }
+  if (method === "GET" && u.includes("/chat/presets/catalog")) {
+    return Promise.resolve({
+      productPresets: [...ragPresetsData],
+      experimentalPresets: experimentalPresetsFixture(),
+    });
+  }
+  if (method === "GET" && u.includes("/compatible-presets")) {
+    return Promise.resolve(compatiblePresetsFixture());
   }
   if (method === "GET" && u.includes("/runtime-config/capabilities")) {
     return Promise.resolve({
@@ -814,7 +923,7 @@ async function openChatToolbarOverflow(user: ReturnType<typeof userEvent.setup>)
 async function openChatConfigurationEdit(user: ReturnType<typeof userEvent.setup>) {
   await openChatToolbarOverflow(user);
   const panel = await screen.findByTestId("chat-configuration-side-panel");
-  if (!within(panel).queryByTestId("chat-llm-model-select")) {
+  if (!within(panel).queryByTestId("chat-edit-assistant-configuration-link")) {
     await user.click(within(panel).getByTestId("chat-config-edit-button"));
   }
 }
@@ -908,7 +1017,7 @@ describe("ChatPage", () => {
       runtimeOverride: {},
     });
     ragPresetsData = [
-      { id: "pr1", name: "P", description: null, tags: [], values: {}, system: false, createdAt: "", updatedAt: "" },
+      { id: P3_PRESET_ID, name: "P", description: null, tags: [], values: {}, system: false, createdAt: "", updatedAt: "" },
     ];
     deleteMutateAsync.mockClear();
     routerPushMock.mockClear();
@@ -1047,9 +1156,9 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
 
     await expandChatMessageMetadata(user);
-    expect(await screen.findByTestId("chat-trace")).toHaveTextContent(/Message trace/i);
+    expect(await screen.findByTestId("chat-trace")).toHaveTextContent(/Retrieval and grounding trace/i);
     expect(screen.queryByTestId("chat-trace-jaeger-not-run")).not.toBeInTheDocument();
-    expect(screen.getByTestId("chat-sources")).toHaveTextContent(/Sources \(1\)/i);
+    expect(screen.getByTestId("chat-sources")).toHaveTextContent(/Source documents \(1\)/i);
   });
 
   it("T-M5-FE-sources: renders filename, date, chunk, and date warning", async () => {
@@ -1108,7 +1217,7 @@ describe("ChatPage", () => {
 
     expect(await screen.findByTestId("chat-page")).toBeInTheDocument();
     expect(screen.getByTestId("chat-answer")).toHaveTextContent("No exact acta");
-    expect(screen.getByTestId("chat-message-metadata-toggle")).toHaveTextContent(/More information/i);
+    expect(screen.getByTestId("chat-message-metadata-toggle")).toHaveTextContent(/Answer quality checks/i);
     expect(screen.getByTestId("chat-sources")).not.toBeVisible();
     await expandChatMessageMetadata(user);
     expect(screen.getByTestId("chat-sources")).toBeVisible();
@@ -1164,7 +1273,7 @@ describe("ChatPage", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
 
-    expect(await screen.findByTestId("chat-runtime-blocking-input-message")).toHaveTextContent(/requires a new compatible index snapshot/i);
+    expect(await screen.findByTestId("chat-runtime-blocking-input-message")).toHaveTextContent(/compatible search index/i);
     expect(screen.getByTestId("chat-message-composer")).toBeDisabled();
     expect(screen.getByTestId("chat-send-button")).toBeDisabled();
   });
@@ -1184,7 +1293,7 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
     const panel = await screen.findByTestId("chat-configuration-side-panel");
-    const modelSelect = within(panel).getByRole("combobox", { name: /^LLM model$/i });
+    const modelSelect = within(panel).getByTestId("chat-final-answer-model-select");
 
     await user.selectOptions(modelSelect, "llama");
 
@@ -1201,35 +1310,37 @@ describe("ChatPage", () => {
   it("shows experimental preset label (P4/P6) when selectedPresetId is experimental (never Recommended Default)", async () => {
     const user = userEvent.setup();
     // Pretend the conversation already persisted an experimental preset id.
-    mockConvRows[0].presetId = "cafe0001-0001-4001-8001-000000000014";
-    mockConvRows[0].effectivePresetId = "cafe0001-0001-4001-8001-000000000014";
+    mockConvRows[0].presetId = P4_PRESET_ID;
+    mockConvRows[0].effectivePresetId = P4_PRESET_ID;
+    vi.mocked(apiFetch).mockImplementation(apiFetchWithMetadataIndex);
 
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
 
-    const presetSelect = screen.getByRole("combobox", { name: /^Preset$/i }) as HTMLSelectElement;
-    expect(presetSelect.value).toBe("cafe0001-0001-4001-8001-000000000014");
+    const presetSelect = screen.getByRole("combobox", { name: /^Configuration profile$/i }) as HTMLSelectElement;
+    expect(presetSelect.value).toBe(P4_PRESET_ID);
     const selected = Array.from(presetSelect.options).find((o) => o.selected);
-    expect(selected?.text ?? "").toContain("P4 — Chunk + metadata retrieval");
-    expect(selected?.text ?? "").not.toMatch(/Recommended/i);
+    expect(selected?.text ?? "").toContain("Chunk + metadata retrieval");
+    expect(selected?.text ?? "").not.toMatch(/^P4\b/);
   });
 
   it("selecting compatible experimental preset persists presetId via PATCH", async () => {
     const user = userEvent.setup();
+    vi.mocked(apiFetch).mockImplementation(apiFetchWithMetadataIndex);
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
 
-    const presetSelect = screen.getByRole("combobox", { name: /^Preset$/i }) as HTMLSelectElement;
-    await user.selectOptions(presetSelect, "cafe0001-0001-4001-8001-000000000014");
+    const presetSelect = screen.getByRole("combobox", { name: /^Configuration profile$/i }) as HTMLSelectElement;
+    await user.selectOptions(presetSelect, P4_PRESET_ID);
 
     const calls = patchConversationApiCalls();
     expect(calls.length).toBeGreaterThan(0);
     const last = calls[calls.length - 1];
     const init = last[1] as RequestInit;
     expect(JSON.parse(String(init.body))).toEqual(
-      expect.objectContaining({ presetId: "cafe0001-0001-4001-8001-000000000014" }),
+      expect.objectContaining({ presetId: P4_PRESET_ID }),
     );
   });
 
@@ -1238,16 +1349,17 @@ describe("ChatPage", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
+    await user.click(screen.getByTestId("chat-preset-show-incompatible"));
 
-    const presetSelect = screen.getByRole("combobox", { name: /^Preset$/i }) as HTMLSelectElement;
+    const presetSelect = screen.getByRole("combobox", { name: /^Configuration profile$/i }) as HTMLSelectElement;
     const optionTexts = Array.from(presetSelect.options)
       .map((o) => o.text)
       .filter(Boolean);
 
-    expect(optionTexts.some((t) => t.includes("P13 — Clarification loop"))).toBe(true);
-    expect(optionTexts.some((t) => t.includes("P14 — Memory flow"))).toBe(true);
+    expect(optionTexts.some((t) => t.includes("Clarification loop"))).toBe(true);
+    expect(optionTexts.some((t) => t.includes("Memory flow"))).toBe(true);
     for (const text of optionTexts) {
-      expect(text).not.toMatch(/REQUIRES_MULTI_TURN|FUTURE_MULTI_TURN|\[NOT_SUPPORTED/);
+      expect(text).not.toMatch(/REQUIRES_MULTI_TURN|FUTURE_MULTI_TURN|\[NOT_SUPPORTED|^P\d+\s*-/);
     }
   });
 
@@ -1259,11 +1371,9 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
 
-    await user.click(screen.getByTestId("chat-config-runtime-collapsible"));
-    await user.click(screen.getByTestId("chat-config-runtime-refresh-effective"));
     expect(screen.getByRole("checkbox", { name: /Use retrieval/i })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: /Ranker/i })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: /Post-retrieval/i })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Rerank retrieved passages/i })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Post-retrieval processing/i })).toBeChecked();
   });
 
   it("shows retrieval+metadata+advanced+FC+advisors+adaptive+judge when P12 is selected", async () => {
@@ -1274,36 +1384,31 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
 
-    await user.click(screen.getByTestId("chat-config-runtime-collapsible"));
-    await user.click(screen.getByTestId("chat-config-runtime-refresh-effective"));
     expect(screen.getByRole("checkbox", { name: /Use retrieval/i })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: /Function calling/i })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: /Advisor/i })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Retrieval advisor/i })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: /Adaptive routing/i })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: /Judge/i })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Answer quality checks/i })).toBeChecked();
   });
 
-  it("marks conversation as Custom after saving any runtime override, and clears on Clear", async () => {
+  it("marks conversation as custom after saving any conversation configuration patch, and resets on Reset to preset values", async () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
 
-    // Open advanced config, refresh effective config and flip a boolean (auto-saves to runtimeOverride).
-    await user.click(screen.getByTestId("chat-config-runtime-collapsible"));
-    await user.click(screen.getByTestId("chat-config-runtime-refresh-effective"));
-    const useRetrieval = screen.getByRole("checkbox", { name: /Use retrieval/i });
-    await user.click(useRetrieval);
+    // Flip a boolean in edit mode (auto-saves to runtimeOverride).
+    const ranker = screen.getByTestId("chat-runtime-toggle-rankerEnabled");
+    await user.click(ranker);
 
     // Toggling should PATCH runtimeOverride and make the Custom badge visible.
     await waitFor(() => {
-      expect(screen.getByText(/^Custom$/i)).toBeInTheDocument();
+      expect(screen.getByText(/Custom configuration for this conversation/i)).toBeInTheDocument();
     });
 
-    // Clear should remove runtimeOverride and hide the badge.
-    await user.click(screen.getByRole("button", { name: /^Clear$/i }));
+    await user.click(screen.getByRole("button", { name: /Reset to preset values/i }));
     await waitFor(() => {
-      expect(screen.queryByText(/^Custom$/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Custom configuration for this conversation/i)).not.toBeInTheDocument();
     });
   });
 
@@ -1510,18 +1615,21 @@ describe("ChatPage", () => {
   });
 
   it("shows Unknown preset label when selected preset id is not in either catalog (never None)", async () => {
+    mockConvRows[0] = {
+      ...mockConvRows[0],
+      presetId: "missing-preset-id",
+      effectivePresetId: "missing-preset-id",
+    };
     ragPresetsData = [
-      { id: "pr1", name: "P", description: null, tags: [], values: {}, system: false, createdAt: "", updatedAt: "" },
+      { id: P3_PRESET_ID, name: "P", description: null, tags: [], values: {}, system: false, createdAt: "", updatedAt: "" },
     ];
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
-    // Ignore unrelated initial effects (draft load, etc.).
     vi.mocked(apiFetch).mockClear();
-    const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
-    // Selected preset is backend-authoritative; when user did not select a preset, the select value is empty.
-    expect(presetSelect).toHaveValue("");
+    const presetSelect = await screen.findByRole("combobox", { name: /Configuration profile/i });
+    expect(presetSelect).toHaveValue("missing-preset-id");
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
     expect(patchConversationApiCalls()).toHaveLength(0);
   });
@@ -1529,31 +1637,30 @@ describe("ChatPage", () => {
   it("shows preset catalog name when conversation presetId matches catalog", async () => {
     mockConvRows[0] = {
       ...mockConvRows[0],
-      presetId: "pr1",
+      presetId: P3_PRESET_ID,
       effectivePresetId: DEFAULT_EFFECTIVE_PRESET_ID,
     };
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
-    const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
-    expect(presetSelect).toHaveValue("pr1");
-    expect(screen.getByRole("option", { name: /^P$/ })).toBeInTheDocument();
+    const presetSelect = await screen.findByRole("combobox", { name: /Configuration profile/i });
+    expect(presetSelect).toHaveValue(P3_PRESET_ID);
+    expect(screen.getByRole("option", { name: /^P \(Standard\)$/ })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
   });
 
-  it("disables preset select and explains empty product catalog while still showing experimental presets", async () => {
+  it("keeps preset select enabled with experimental presets when product catalog is empty", async () => {
     ragPresetsData = [];
+    vi.mocked(apiFetch).mockImplementation(apiFetchWithMetadataIndex);
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
-    const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
-    expect(presetSelect).toBeDisabled();
-    expect(screen.getAllByRole("status").some((n) => /No presets are available/i.test(n.textContent ?? ""))).toBe(true);
+    const presetSelect = await screen.findByRole("combobox", { name: /Configuration profile/i });
+    expect(presetSelect).not.toBeDisabled();
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
-    // Experimental group still loads from unified catalog.
-    expect(screen.getByRole("option", { name: /^P4 — Chunk \+ metadata retrieval$/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Chunk \+ metadata retrieval/ })).toBeInTheDocument();
   });
 
   it("when conversation omits preset ids, shows Recommended Default (no local fallback)", async () => {
@@ -1563,15 +1670,17 @@ describe("ChatPage", () => {
       effectivePresetId: null,
     };
     ragPresetsData = [
-      { id: "a", name: "A", description: null, tags: [], values: {}, system: false, createdAt: "", updatedAt: "" },
-      { id: "s", name: "Sys", description: null, tags: [], values: {}, system: true, createdAt: "", updatedAt: "" },
+      { id: P3_PRESET_ID, name: "A", description: null, tags: [], values: {}, system: false, createdAt: "", updatedAt: "" },
+      { id: "cafe0001-0001-4001-8001-000000000010", name: "Sys", description: null, tags: [], values: {}, system: true, createdAt: "", updatedAt: "" },
     ];
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
-    const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
-    await waitFor(() => expect(presetSelect).toHaveValue(""));
+    const presetSelect = await screen.findByRole("combobox", { name: /Configuration profile/i });
+    expect(screen.getByText(/Recommended Default/i)).toBeInTheDocument();
+    expect(patchConversationApiCalls()).toHaveLength(0);
+    expect(presetSelect.querySelector(`option[value="${P3_PRESET_ID}"]`)).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
   });
 
@@ -1596,9 +1705,9 @@ describe("ChatPage", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatConfigurationEdit(user);
-    const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
-    await user.selectOptions(presetSelect, "pr1");
-    expect(screen.getByRole("combobox", { name: /^LLM model$/i })).toBeInTheDocument();
+    const presetSelect = await screen.findByRole("combobox", { name: /Configuration profile/i });
+    await user.selectOptions(presetSelect, P3_PRESET_ID);
+    expect(screen.getByTestId("chat-final-answer-model-select")).toBeInTheDocument();
     const panel = screen.getByTestId("chat-configuration-side-panel");
     expect(within(panel).getByRole("heading", { name: /Chat configuration/i })).toBeInTheDocument();
   });
@@ -1620,7 +1729,7 @@ describe("ChatPage", () => {
   });
 
   describe("chat layout width on desktop", () => {
-    it("uses centered narrow layout when configuration panel is closed", async () => {
+    it("uses expanded full-width layout when configuration panel is closed", async () => {
       const user = userEvent.setup();
       renderChat();
       await user.click(screen.getByRole("button", { name: /^T1$/ }));
@@ -1628,12 +1737,11 @@ describe("ChatPage", () => {
       const workspace = screen.getByTestId("chat-main-workspace");
       const readable = screen.getByTestId("chat-readable-column");
 
-      expect(workspace).toHaveAttribute("data-chat-layout-mode", "centered");
+      expect(workspace).toHaveAttribute("data-chat-layout-mode", "expanded");
       expect(screen.queryByTestId("chat-configuration-side-panel")).not.toBeInTheDocument();
-      expect(readable.className).toMatch(/md:max-w-\[min\(50%,48rem\)\]/);
-      expect(readable.className).toMatch(/md:flex-none/);
-      expect(readable.className).toMatch(/md:mx-auto/);
-      expect(readable.className).not.toMatch(/md:flex-1/);
+      expect(readable.className).toMatch(/flex-1/);
+      expect(readable.className).not.toMatch(/md:max-w-\[min\(50%,48rem\)\]/);
+      expect(readable.className).not.toMatch(/md:mx-auto/);
     });
 
     it("uses split two-column layout when configuration panel is open", async () => {
@@ -1648,8 +1756,8 @@ describe("ChatPage", () => {
 
       expect(workspace).toHaveAttribute("data-chat-layout-mode", "split");
       expect(workspace).toContainElement(panel);
-      expect(readable.className).toMatch(/md:flex-1/);
-      expect(readable.className).not.toMatch(/md:max-w-\[min\(50%,48rem\)\]/);
+      expect(readable.className).toMatch(/flex-1/);
+      expect(panel.className).toMatch(/shrink-0/);
     });
 
     it("keeps the message thread inside the readable column, not inside the config panel", async () => {
@@ -1666,7 +1774,7 @@ describe("ChatPage", () => {
       expect(panel).not.toContainElement(thread);
     });
 
-    it("returns to centered layout after closing the configuration panel", async () => {
+    it("returns to expanded layout after closing the configuration panel", async () => {
       const user = userEvent.setup();
       renderChat();
       await user.click(screen.getByRole("button", { name: /^T1$/ }));
@@ -1676,10 +1784,9 @@ describe("ChatPage", () => {
       const workspace = screen.getByTestId("chat-main-workspace");
       const readable = screen.getByTestId("chat-readable-column");
 
-      expect(workspace).toHaveAttribute("data-chat-layout-mode", "centered");
+      expect(workspace).toHaveAttribute("data-chat-layout-mode", "expanded");
       expect(screen.queryByTestId("chat-configuration-side-panel")).not.toBeInTheDocument();
-      expect(readable.className).toMatch(/md:flex-none/);
-      expect(readable.className).not.toMatch(/md:flex-1/);
+      expect(readable.className).toMatch(/flex-1/);
     });
   });
 
@@ -1757,7 +1864,7 @@ describe("ChatPage", () => {
     await user.click(screen.getByTestId("chat-config-trigger"));
     expect(screen.queryByTestId("chat-configuration-side-panel")).not.toBeInTheDocument();
     await user.click(screen.getByTestId("chat-config-edit-button"));
-    expect(await screen.findByRole("heading", { level: 3, name: "Document scope" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 3, name: "Assistant" })).toBeInTheDocument();
   });
 
   it("renders Chat actions sections with padded body and sticky footer", async () => {
@@ -1772,16 +1879,17 @@ describe("ChatPage", () => {
 
     expect(screen.queryByText(/Unavailable capabilities/i)).not.toBeInTheDocument();
 
-    // Edit mode exposes Document scope + Model & preset; index caps live under Technical details; runtime is Advanced options.
+    // Edit mode exposes Assistant, Models, Retrieval, and tools sections; index caps live under Advanced technical details.
     const headings = within(panel)
       .getAllByRole("heading", { level: 3 })
       .map((h) => h.textContent?.trim() ?? "");
     const idx = (s: string) => headings.findIndex((h) => h === s);
-    expect(idx("Document scope")).toBeGreaterThanOrEqual(0);
-    expect(idx("Model & preset")).toBeGreaterThanOrEqual(0);
-    expect(idx("Document scope")).toBeLessThan(idx("Model & preset"));
-    expect(idx("Advanced options")).toBeGreaterThan(idx("Model & preset"));
-    expect(within(panel).getByTestId("chat-config-technical-details")).toBeInTheDocument();
+    expect(idx("Assistant")).toBeGreaterThanOrEqual(0);
+    expect(idx("Models")).toBeGreaterThanOrEqual(0);
+    expect(idx("Assistant")).toBeLessThan(idx("Models"));
+    expect(idx("Retrieval")).toBeGreaterThanOrEqual(0);
+    expect(idx("Retrieval")).toBeGreaterThan(idx("Models"));
+    expect(within(panel).getByTestId("chat-config-advanced-technical")).toBeInTheDocument();
 
     // Padding sanity: inner body is padded.
     const body = panel.querySelector("div.min-h-0.flex-1.overflow-y-auto") as HTMLElement | null;
@@ -1789,18 +1897,16 @@ describe("ChatPage", () => {
     expect(body?.className ?? "").toMatch(/\bpy-4\b/);
   });
 
-  it("advanced configuration collapsible opens and closes with aria-expanded", async () => {
+  it("advanced technical details expands on summary click", async () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await openChatToolbarOverflow(user);
+    await openChatConfigurationEdit(user);
 
-    const toggle = screen.getByTestId("chat-config-runtime-collapsible");
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await user.click(toggle);
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await user.click(toggle);
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    const details = screen.getByTestId("chat-config-advanced-technical");
+    expect(details).not.toHaveAttribute("open");
+    await user.click(screen.getByText(/Advanced technical details/i));
+    expect(details).toHaveAttribute("open");
   });
 
   it("delete chat button stays after move button (destructive at end)", async () => {
@@ -1995,13 +2101,6 @@ describe("ChatPage", () => {
     vi.mocked(apiFetch).mockImplementation(async (url: string | { toString(): string }, init?: RequestInit) => {
       const u = typeof url === "string" ? url : url.toString();
       const method = (init?.method ?? "GET").toUpperCase();
-      if (u.includes("/draft")) return { content: "" };
-      if (method === "GET" && u.includes("/runtime-state")) {
-        return { validation: { valid: true, supported: true, errors: [] } };
-      }
-      if (u.includes("/conversations/c1/messages") && method === "GET") {
-        return [...chatMessagesStore];
-      }
       if (method === "POST" && u.includes("/conversations/c1/messages") && !u.includes("/retry")) {
         throw createHttpApiError({
           status: 502,
@@ -2011,7 +2110,7 @@ describe("ChatPage", () => {
           method: "POST",
         });
       }
-      return {};
+      return defaultApiFetch(url, init);
     });
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
@@ -2034,17 +2133,10 @@ describe("ChatPage", () => {
     vi.mocked(apiFetch).mockImplementation(async (url: string | { toString(): string }, init?: RequestInit) => {
       const u = typeof url === "string" ? url : url.toString();
       const method = (init?.method ?? "GET").toUpperCase();
-      if (u.includes("/draft")) return { content: "" };
-      if (method === "GET" && u.includes("/runtime-state")) {
-        return { validation: { valid: true, supported: true, errors: [] } };
-      }
-      if (u.includes("/conversations/c1/messages") && method === "GET") {
-        return [...chatMessagesStore];
-      }
       if (method === "POST" && u.includes("/conversations/c1/messages") && !u.includes("/retry")) {
         throw new ApiError(503, "The service used a direct answer fallback.", { kind: "http" });
       }
-      return {};
+      return defaultApiFetch(url, init);
     });
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));

@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.evaluation;
 
+import com.uniovi.rag.testsupport.evaluation.LabBenchmarkTestSupport;
 import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
 import com.uniovi.rag.application.port.EvaluationDatasetStorePort;
 import com.uniovi.rag.configuration.RagRuntimeProperties;
@@ -31,6 +32,7 @@ import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusRead
 import com.uniovi.rag.application.evaluation.workbook.EvaluationReferenceBundleLoader;
 import com.uniovi.rag.application.service.evaluation.preset.LabPresetAxisSupport;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusReadinessDto;
+import com.uniovi.rag.application.service.llm.ModelPreflightService;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import org.junit.jupiter.api.BeforeEach;
@@ -198,7 +200,7 @@ class RagPresetCampaignOrchestratorTest {
                         null,
                         null,
                         null,
-                        List.of(), List.of(), null, null);
+                        List.of(), List.of(), null, null, Map.of());
 
         BenchmarkJobAccepted accepted =
                 orch.startJsonBenchmark(userId, "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req);
@@ -256,7 +258,7 @@ class RagPresetCampaignOrchestratorTest {
                 evaluationCorpusRepository,
                 labBenchmarkConfigPreflightService,
                 labPresetAxisSupport,
-                new LabBenchmarkDefaultModelResolver("gemma3:4b", "mxbai-embed-large:latest"),
-                runtimeObservability);
+                LabBenchmarkTestSupport.stubDefaultModelResolver("gemma3:4b", "mxbai-embed-large:latest"),
+                runtimeObservability, mock(ModelPreflightService.class));
     }
 }

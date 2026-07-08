@@ -1,18 +1,22 @@
 "use client";
 
 import { History, Menu } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { AppContextBreadcrumbGate } from "@/components/layout/AppContextBreadcrumb";
 import { AppSectionActionsGate } from "@/components/layout/AppSectionActions";
+import { ProjectCreateFeedbackBanner } from "@/features/projects/components/ProjectCreateFeedbackBanner";
 import { ActivityHelpSheet } from "@/components/layout/ActivityHelpSheet";
 import { ThemeLanguageMenu } from "@/components/layout/ThemeLanguageMenu";
 import { SessionExpiredBridge } from "@/components/auth/SessionExpiredBridge";
 import { clearSessionCookie } from "@/features/auth/lib/session-client";
+import { resetRegisteredClientSessionState } from "@/lib/client-session-reset";
+import { hardNavigate } from "@/lib/hard-navigation";
 import { cn } from "@/lib/utils";
-import { usePathname, useRouter } from "@/navigation";
+import { usePathname } from "@/navigation";
 import { SidebarResizeHandle } from "@/components/layout/SidebarResizeHandle";
 import { useSidebarShell } from "@/components/layout/use-sidebar-shell";
 import { RAIL_WIDTH_PX } from "@/components/layout/sidebar-layout";
@@ -26,7 +30,8 @@ type AppShellProps = {
 export function AppShell({ children, panelBody }: Readonly<AppShellProps>) {
   const tNav = useTranslations("Nav");
   const tActivity = useTranslations("Activity");
-  const router = useRouter();
+  const locale = useLocale();
+  const queryClient = useQueryClient();
   const pathname = usePathname();
   const [activityOpen, setActivityOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -36,9 +41,9 @@ export function AppShell({ children, panelBody }: Readonly<AppShellProps>) {
   const sidebarWidthPx = railCollapsed ? RAIL_WIDTH_PX : expandedWidthPx;
 
   async function signOut() {
+    await resetRegisteredClientSessionState({ queryClient });
     await clearSessionCookie();
-    router.push("/login");
-    router.refresh();
+    hardNavigate("/login", locale);
   }
 
   return (
@@ -112,10 +117,11 @@ export function AppShell({ children, panelBody }: Readonly<AppShellProps>) {
               className={cn(
                 "mx-auto flex w-full min-w-0 flex-col",
                 isChat
-                  ? "h-full min-h-0 flex-1 px-4 md:px-8 max-w-none w-full"
+                  ? "h-full min-h-0 flex-1 max-w-none pl-4 pr-0 md:pl-8"
                   : "px-4 py-6 md:px-8 max-w-5xl",
               )}
             >
+              <ProjectCreateFeedbackBanner />
               {children}
             </div>
           </div>

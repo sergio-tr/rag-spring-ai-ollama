@@ -4,6 +4,7 @@ import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.application.result.chat.ChatSource;
 import com.uniovi.rag.application.result.chat.QueryResponse;
 import com.uniovi.rag.application.service.ChatMessageWorkService;
+import com.uniovi.rag.application.service.chat.ChatRetrievalSourceContributor;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.exception.ErrorCode;
 import com.uniovi.rag.domain.model.QueryType;
@@ -12,11 +13,13 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
+import com.uniovi.rag.configuration.RagRuntimeProperties;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -29,6 +32,7 @@ import org.springframework.http.HttpStatus;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -47,6 +51,9 @@ class ChatMessageJobHandlerTest {
     private ChatMessageWorkService chatMessageWorkService;
 
     @Mock
+    private ChatRetrievalSourceContributor chatRetrievalSourceContributor;
+
+    @Mock
     private AsyncTaskMutationService mutation;
 
     @Mock
@@ -55,8 +62,19 @@ class ChatMessageJobHandlerTest {
     @Mock
     private RuntimeObservability observability;
 
+    @Mock
+    private RagRuntimeProperties ragRuntimeProperties;
+
     @InjectMocks
     private ChatMessageJobHandler handler;
+
+    @BeforeEach
+    void stubSourceContributor() {
+        lenient().when(ragRuntimeProperties.hasSecondaryModel()).thenReturn(false);
+        lenient()
+                .when(chatRetrievalSourceContributor.buildSources(any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+    }
 
     @Test
     void taskType_isChatMessage() {
@@ -317,6 +335,59 @@ class ChatMessageJobHandlerTest {
                 .applyAssistantError(asstId, convId, "Something went wrong while generating a reply.");
         verify(mutation).markFailed(taskId, "Something went wrong while generating a reply.");
         verify(cancellationRegistry).clear(taskId);
+    }
+
+    @Test
+    void ragAnswerIncludesSources_whenPipelineOmitsThem() {
+        UUID taskId = UUID.randomUUID();
+        UUID convId = UUID.randomUUID();
+        UUID asstId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+
+        UserEntity user = mockUser(userId);
+        ProjectEntity project = mockProject(projectId);
+
+        AsyncTaskEntity task = Mockito.mock(AsyncTaskEntity.class);
+        when(task.getId()).thenReturn(taskId);
+        when(task.getUser()).thenReturn(user);
+        when(task.getProject()).thenReturn(project);
+        when(task.getRequestPayload()).thenReturn(validPayload(convId, asstId));
+
+        when(cancellationRegistry.isCancelled(taskId)).thenReturn(false);
+        when(runtimeQueryExecutionService.generateResponseForChat(
+                        eq("hello"),
+                        eq("m1"),
+                        eq(userId),
+                        eq(projectId),
+                        eq(convId),
+                        eq(List.of("d1")),
+                        any()))
+                .thenReturn(QueryResponse.fromTool("tool answer", "getDuration", QueryType.GET_DURATION));
+        when(chatRetrievalSourceContributor.buildSources(
+                        eq(userId), eq(projectId), eq(convId), eq(List.of("d1")), eq("hello")))
+                .thenReturn(List.of(Map.of(
+                        "document_id", "doc-1",
+                        "filename", "acta-1.txt",
+                        "snippet", "fecha del acta",
+                        "distance", 0.12)));
+        when(chatMessageWorkService.currentTraceId()).thenReturn("trace-1");
+
+        handler.run(task, mutation);
+
+        verify(chatMessageWorkService)
+                .applyAssistantSuccess(
+                        eq(asstId),
+                        eq(convId),
+                        eq("tool answer"),
+                        eq(List.of(new ChatSource("doc-1", null, "acta-1.txt", "fecha del acta", 0.12, "distance", null, null, null))),
+                        eq("GET_DURATION"),
+                        eq("trace-1"),
+                        any(),
+                        eq("m1"),
+                        any(),
+                        eq(Map.of()));
+        verify(mutation).markSucceeded(eq(taskId), any());
     }
 
     private static UserEntity mockUser() {

@@ -15,7 +15,7 @@ import {
 
 const EVIDENCE_DIR = path.resolve(
   __dirname,
-  "../../../.cursor/evidence/final-lab-rag-closure/rag-no-empty-success",
+  "../../../docs/evidence/final-lab-rag-closure/rag-no-empty-success",
 );
 
 test.describe("Closure RAG no empty success @closure @fullstack", () => {
@@ -98,7 +98,7 @@ test.describe("Closure RAG no empty success @closure @fullstack", () => {
     });
     const skippedCount = await skippedRows.count();
     if (skippedCount === 0) {
-      test.skip(true, "No skipped rows in this run — reason column check not applicable");
+      test.skip(true, "No skipped rows in this run - reason column check not applicable");
     }
     const firstNote = await skippedRows.first().locator("td").last().textContent();
     expect((firstNote ?? "").trim().length, "Skipped item must expose a reason").toBeGreaterThan(2);

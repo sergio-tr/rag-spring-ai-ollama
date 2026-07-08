@@ -38,4 +38,38 @@ class ActaFieldAnchorHeuristicsTest {
         assertThat(ActaFieldAnchorHeuristics.needsActaAnchor(query, EntityExtractionResult.emptyWithNote(null)))
                 .isFalse();
     }
+
+    @Test
+    void corpusWideListingPatterns_areAggregate() {
+        assertThat(ActaFieldAnchorHeuristics.isCorpusWideAggregate("dime qué actas tienen 20 asistentes"))
+                .isTrue();
+        assertThat(ActaFieldAnchorHeuristics.isCorpusWideAggregate("dime los lugares donde se han realizado las actas"))
+                .isTrue();
+        assertThat(ActaFieldAnchorHeuristics.isCorpusWideAggregate("en cuántas actas aparece beatriz suárez"))
+                .isTrue();
+        assertThat(ActaFieldAnchorHeuristics.isCorpusWideAggregate("resume todo lo tratado sobre calefacción"))
+                .isTrue();
+    }
+
+    @Test
+    void febreroTemasAttendeeCompound_isCorpusWideAggregate() {
+        String query =
+                "¿Qué temas se discutieron en las reuniones celebradas en febrero que contaron con más de 15 asistentes?";
+        assertThat(ActaFieldAnchorHeuristics.isCompoundMonthTopicAttendeeFilter(query.toLowerCase()))
+                .isTrue();
+        assertThat(ActaFieldAnchorHeuristics.isCorpusWideAggregate(query.toLowerCase()))
+                .isTrue();
+    }
+
+    @Test
+    void explicitActaPdfReference_detected() {
+        assertThat(ActaFieldAnchorHeuristics.hasExplicitActaDocumentReference(
+                        "¿Qué acuerdo se tomó sobre el ascensor en ACTA 6.pdf?"))
+                .isTrue();
+        assertThat(ActaFieldAnchorHeuristics.hasExplicitActaDocumentReference("presidente del acta 2"))
+                .isTrue();
+        assertThat(ActaFieldAnchorHeuristics.hasExplicitActaDocumentReference(
+                        "cuales son los asistentes del acta del 25 de febrero del 2025?"))
+                .isFalse();
+    }
 }

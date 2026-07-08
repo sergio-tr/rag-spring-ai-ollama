@@ -29,7 +29,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * P33 — sole writer/reader for {@code runtime_trace_regression_suite_*}; materializes {@link RuntimeTraceRegressionSuiteRequest} without invoking
+ * P33 - sole writer/reader for {@code runtime_trace_regression_suite_*}; materializes {@link RuntimeTraceRegressionSuiteRequest} without invoking
  * {@code RuntimeTraceRegressionSuiteService}.
  */
 @Service

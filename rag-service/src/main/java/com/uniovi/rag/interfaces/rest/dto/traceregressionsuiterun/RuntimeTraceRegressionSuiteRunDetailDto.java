@@ -24,7 +24,7 @@ import java.util.UUID;
  *
  * <p>P44: {@link #toRuntimeTraceRegressionSuiteResultForImport()} rebuilds a {@link RuntimeTraceRegressionSuiteResult} from
  * imported {@code run.json}. The {@link #id()} and {@link #createdAt()} values from that JSON are not used as the persisted
- * primary key or {@code createdAt} column — P41 assigns new identifiers and timestamps via {@code createRun}.
+ * primary key or {@code createdAt} column - P41 assigns new identifiers and timestamps via {@code createRun}.
  */
 public record RuntimeTraceRegressionSuiteRunDetailDto(
         UUID id,

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
@@ -37,6 +37,14 @@ function renderSubject() {
   );
 }
 
+function openEditMode() {
+  fireEvent.click(screen.getByTestId("chat-config-edit-button"));
+}
+
+function openAdvancedRuntimeSection() {
+  openEditMode();
+}
+
 describe("ChatConfigurationPanelContent runtime capability toggles", () => {
   beforeEach(() => {
     hooksMock.useProjectIndexProfile.mockReturnValue({ data: null, isLoading: false, isError: false });
@@ -66,6 +74,7 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
           conversationLlmModel: null,
           conversationClassifierModelId: null,
           conversationModelsPinned: false,
+          configurationMode: "PRESET" as const,
           runtimeOverride: {},
           manualOverrideKeys: [],
           isCustom: false,
@@ -87,7 +96,9 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
         setLlmModelChoice: vi.fn(),
         classifierModelChoice: "",
         setClassifierModelChoice: vi.fn(),
-        modelsCatalog: undefined,
+        selectableLlmModels: [],
+        selectableLlmModelsLoading: false,
+        selectableLlmModelsEffectiveProvider: undefined,
         modelsError: false,
         modelsErrorMessage: "",
         presetSelectValue: "",
@@ -95,6 +106,9 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
         presets: [],
         presetsError: false,
         presetsLoading: false,
+        projectCompatiblePresets: null,
+        compatibleProductPresets: [],
+        compatibleExperimentalPresets: [],
         experimentalPresets: [],
         experimentalPresetsLoading: false,
         experimentalPresetsError: false,
@@ -133,7 +147,7 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     expect(screen.getByTestId("chat-limit-documents-checkbox")).toBeInTheDocument();
     expect(screen.getByTestId("chat-open-documents-sheet")).toBeInTheDocument();
     expect(screen.getByTestId("chat-preset-select")).toBeInTheDocument();
-    expect(screen.getByTestId("chat-llm-model-select")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-edit-assistant-configuration-link")).toBeInTheDocument();
     expect(screen.getByTestId("chat-classifier-select")).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /Default classifier \(default\)/i })).toBeInTheDocument();
   });
@@ -156,12 +170,22 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     }));
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
+    fireEvent.click(screen.getByTestId("chat-config-edit-button"));
     fireEvent.change(screen.getByTestId("chat-runtime-toggle-topK"), { target: { value: "9" } });
     fireEvent.change(screen.getByTestId("chat-runtime-toggle-similarityThreshold"), { target: { value: "0.4" } });
 
-    expect(saveRuntimeOverride).toHaveBeenCalledWith({ topK: 9 });
-    expect(saveRuntimeOverride).toHaveBeenCalledWith({ similarityThreshold: 0.4 });
+    expect(saveRuntimeOverride).toHaveBeenCalledWith(
+      expect.objectContaining({
+        retrievalOverrideMode: "custom",
+        topK: 9,
+      }),
+    );
+    expect(saveRuntimeOverride).toHaveBeenCalledWith(
+      expect.objectContaining({
+        retrievalOverrideMode: "custom",
+        similarityThreshold: 0.4,
+      }),
+    );
   });
 
   it("renders classifier loading errors without hiding document scope controls", async () => {
@@ -224,21 +248,54 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
 
     renderSubject();
 
-    expect(screen.getByTestId("chat-error-code-REINDEX_REQUIRED")).toHaveTextContent("REINDEX_REQUIRED");
-    expect(screen.getByTestId("chat-runtime-blocking-banner")).toHaveTextContent(/requires a new compatible index snapshot/i);
+    expect(screen.getByTestId("chat-runtime-blocking-banner")).toHaveTextContent(/No active index/i);
+    expect(screen.queryByText(/rankerEnabled/i)).not.toBeInTheDocument();
     const user = userEvent.setup();
-    await user.click(screen.getByText(/Technical details/i));
+    await user.click(screen.getByText(/Advanced technical details/i));
+    expect(screen.getByTestId("chat-config-advanced-blocking-issues")).toBeInTheDocument();
     expect(screen.getByTestId("chat-index-info")).toHaveTextContent("CHUNK_LEVEL");
     expect(screen.getByTestId("chat-index-info")).toHaveTextContent("mxbai-embed-large");
   });
 
-  it("opens advanced configuration and disables toggle when capability has reasonIfDisabled", () => {
+  it("does not render expansion toggle when not engine-wired", () => {
     hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
       data: {
         capabilities: [
           {
-            key: "toolsEnabled",
-            label: "Tools",
+            key: "expansionEnabled",
+            label: "Query expansion",
+            description: "d",
+            category: "RUNTIME_HOT_SWAPPABLE",
+            visibleInChat: true,
+            configurableInChat: true,
+            implemented: true,
+            engineWired: false,
+            supportMode: null,
+            displayOrder: 1,
+            requires: [],
+            excludes: [],
+            requiresIndexSnapshot: false,
+            requiresReindexWhenChanged: false,
+            reasonIfDisabled: null,
+            reasonIfNotImplemented: "Not wired",
+          },
+        ],
+      },
+      isLoading: false,
+    });
+
+    renderSubject();
+    openEditMode();
+    expect(screen.queryByTestId("chat-runtime-toggle-expansionEnabled")).not.toBeInTheDocument();
+  });
+
+  it("renders query expansion and NER when engine-wired", () => {
+    hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
+      data: {
+        capabilities: [
+          {
+            key: "expansionEnabled",
+            label: "Query expansion",
             description: "d",
             category: "RUNTIME_HOT_SWAPPABLE",
             visibleInChat: true,
@@ -251,7 +308,25 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
             excludes: [],
             requiresIndexSnapshot: false,
             requiresReindexWhenChanged: false,
-            reasonIfDisabled: "Policy disabled",
+            reasonIfDisabled: null,
+            reasonIfNotImplemented: null,
+          },
+          {
+            key: "nerEnabled",
+            label: "NER",
+            description: "d",
+            category: "RUNTIME_HOT_SWAPPABLE",
+            visibleInChat: true,
+            configurableInChat: true,
+            implemented: true,
+            engineWired: true,
+            supportMode: null,
+            displayOrder: 2,
+            requires: [],
+            excludes: [],
+            requiresIndexSnapshot: false,
+            requiresReindexWhenChanged: false,
+            reasonIfDisabled: null,
             reasonIfNotImplemented: null,
           },
         ],
@@ -260,13 +335,9 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     });
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
-    const row = screen.getByText("Tools").closest("div");
-    expect(row).toBeTruthy();
-    const checkbox = within(row as HTMLElement).getByRole("checkbox") as HTMLInputElement;
-    expect(checkbox.disabled).toBe(true);
-    // DisabledReason popover trigger should exist.
-    expect(screen.getByText("Disabled")).toBeInTheDocument();
+    openEditMode();
+    expect(screen.getByTestId("chat-runtime-toggle-expansionEnabled")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-runtime-toggle-nerEnabled")).toBeInTheDocument();
   });
 
   it("keeps valid runtime features editable", () => {
@@ -305,9 +376,8 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     }));
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
-    const row = screen.getByText("Reasoning").closest("div");
-    const checkbox = within(row as HTMLElement).getByRole("checkbox") as HTMLInputElement;
+    openAdvancedRuntimeSection();
+    const checkbox = screen.getByRole("checkbox", { name: /Extended reasoning/i }) as HTMLInputElement;
     expect(checkbox.disabled).toBe(false);
     fireEvent.click(checkbox);
     expect(saveRuntimeOverride).toHaveBeenCalledWith({ reasoningEnabled: true });
@@ -341,11 +411,11 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     });
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
+    openEditMode();
     expect(screen.queryByText("Ranker")).toBeNull();
   });
 
-  it("renders not implemented runtime toggles disabled with reason", () => {
+  it("hides not-implemented runtime toggles from normal Chat configuration", () => {
     hooksMock.useRuntimeConfigCapabilities.mockReturnValue({
       data: {
         capabilities: [
@@ -373,11 +443,8 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     });
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
-    const row = screen.getByText("NER").closest("div");
-    const checkbox = within(row as HTMLElement).getByRole("checkbox") as HTMLInputElement;
-    expect(checkbox.disabled).toBe(true);
-    expect(screen.getByText("Disabled")).toBeInTheDocument();
+    openEditMode();
+    expect(screen.queryByTestId("chat-runtime-toggle-nerEnabled")).not.toBeInTheDocument();
   });
 
   it("disables toggle when capability requires another flag that is false in effective config", () => {
@@ -418,11 +485,12 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     }));
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
-    const row = screen.getByText("Post retrieval").closest("div");
-    const checkbox = within(row as HTMLElement).getByRole("checkbox") as HTMLInputElement;
+    openEditMode();
+    const checkbox = screen.getByRole("checkbox", { name: /Post-retrieval processing/i }) as HTMLInputElement;
     expect(checkbox.disabled).toBe(true);
-    expect(screen.getByText("Disabled")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-runtime-disable-tip-postRetrievalEnabled")).toHaveTextContent(
+      "Requires retrieval",
+    );
   });
 
   it("uses backend disabledRuntimeFeatures reason before local capability rules", () => {
@@ -468,11 +536,12 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     }));
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
-    const row = screen.getByText("Post retrieval").closest("div");
-    const checkbox = within(row as HTMLElement).getByRole("checkbox") as HTMLInputElement;
+    openEditMode();
+    const checkbox = screen.getByRole("checkbox", { name: /Post-retrieval processing/i }) as HTMLInputElement;
     expect(checkbox.disabled).toBe(true);
-    expect(screen.getByText("Disabled")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-runtime-disable-tip-postRetrievalEnabled")).toHaveTextContent(
+      "Requires retrieval",
+    );
   });
 
   it("disables toggle when capability excludes another flag that is true in override", () => {
@@ -512,11 +581,10 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     }));
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
-    const row = screen.getByText("Tools").closest("div");
-    const checkbox = within(row as HTMLElement).getByRole("checkbox") as HTMLInputElement;
+    openEditMode();
+    const checkbox = screen.getByTestId("chat-runtime-toggle-toolsEnabled") as HTMLInputElement;
     expect(checkbox.disabled).toBe(true);
-    expect(screen.getByText("Disabled")).toBeInTheDocument();
+    expect(screen.queryByTestId("chat-runtime-disable-tip-toolsEnabled")).not.toBeInTheDocument();
   });
 
   it("treats string 'true' as truthy for excludes checks (coerceBool branch)", () => {
@@ -556,9 +624,8 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     }));
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
-    const row = screen.getByText("Tools").closest("div");
-    const checkbox = within(row as HTMLElement).getByRole("checkbox") as HTMLInputElement;
+    openEditMode();
+    const checkbox = screen.getByTestId("chat-runtime-toggle-toolsEnabled") as HTMLInputElement;
     expect(checkbox.disabled).toBe(true);
   });
 
@@ -590,7 +657,7 @@ describe("ChatConfigurationPanelContent runtime capability toggles", () => {
     });
 
     renderSubject();
-    fireEvent.click(screen.getByTestId("chat-config-runtime-collapsible"));
+    openEditMode();
     expect(screen.getByText("Multi-turn")).toBeInTheDocument();
     expect(screen.getByText("May use multiple turns.")).toBeInTheDocument();
   });

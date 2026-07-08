@@ -21,7 +21,7 @@ import {
 
 const EVIDENCE_DIR = path.resolve(
   __dirname,
-  "../../../.cursor/evidence/wave-2-current/w2-rag/exports",
+  "../../../docs/evidence/wave-2-current/w2-rag/exports",
 );
 
 test.describe("Closure LAB RAG knowledge-base evaluation @closure @fullstack @wave2", () => {
@@ -110,6 +110,9 @@ test.describe("Closure LAB RAG knowledge-base evaluation @closure @fullstack @wa
     expect(["results", "comparison", "job_done"]).toContain(outcome);
 
     await expect(page.getByTestId("lab-benchmark-results-panel")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("lab-export-primary-json")).toBeVisible({ timeout: 15_000 });
+    const advancedExports = page.getByTestId("lab-benchmark-export-advanced");
+    await advancedExports.locator("summary").click();
     await expect(page.getByTestId("lab-export-campaign-items-json")).toBeVisible({ timeout: 15_000 });
     await page.screenshot({ path: path.join(EVIDENCE_DIR, "screenshot-results.png"), fullPage: true });
 

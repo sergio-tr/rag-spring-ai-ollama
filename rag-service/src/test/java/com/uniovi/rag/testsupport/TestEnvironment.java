@@ -13,8 +13,6 @@ public final class TestEnvironment {
 
     private static final String DEFAULT_SPRING_BOOT_PG_URL = "jdbc:postgresql://localhost:5432/vectordb";
 
-    private static final String CI_DEFAULT_INTEGRATION_JDBC_URL = "jdbc:postgresql://localhost:5432/testdb";
-
     private TestEnvironment() {
     }
 
@@ -53,26 +51,20 @@ public final class TestEnvironment {
      */
     @SuppressWarnings("unused")
     public static boolean isJdbcIntegrationTestAvailable() {
-        if (isGitHubActions()) {
-            return true;
-        }
-        String user = firstNonBlankEnv("SPRING_DATASOURCE_USERNAME", "postgres");
-        String pass = firstNonBlankEnv("SPRING_DATASOURCE_PASSWORD", "postgres");
+        return PostgresIntegrationTestSupport.isJdbcIntegrationDatabaseAvailable();
+    }
 
-        if (hasNonBlankEnv("INTEGRATION_JDBC_URL")) {
-            return canOpenPostgresJdbc(System.getenv("INTEGRATION_JDBC_URL"), user, pass);
-        }
-
-        if (canOpenPostgresJdbc(CI_DEFAULT_INTEGRATION_JDBC_URL, user, pass)) {
-            return true;
-        }
-
-        return canPingDockerDaemon();
+    /**
+     * True when Flyway JDBC tests can run on Testcontainers or a reachable local Postgres admin URL.
+     */
+    @SuppressWarnings("unused")
+    public static boolean isIsolatedFlywayPostgresAvailable() {
+        return PostgresIntegrationTestSupport.isIsolatedFlywayPostgresAvailable();
     }
 
     /**
      * True when the Docker API accepts a ping (stricter than {@link DockerClientFactory#isDockerAvailable()}
-     * alone — avoids WSL / Docker Desktop half-configured states where strategies report success but
+     * alone - avoids WSL / Docker Desktop half-configured states where strategies report success but
      * Testcontainers cannot run).
      */
     @SuppressWarnings("unused")

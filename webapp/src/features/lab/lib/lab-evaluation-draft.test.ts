@@ -9,7 +9,9 @@ import {
   labEvaluationDraftStorageKey,
   loadLabEvaluationDraft,
   loadLabEvaluationDraftWithSanitationReport,
+  migrateLabDraftModelsFromCatalog,
   saveLabEvaluationDraft,
+  stripLegacyStaleLabModelIds,
 } from "./lab-evaluation-draft";
 
 describe("lab-evaluation-draft", () => {
@@ -17,8 +19,9 @@ describe("lab-evaluation-draft", () => {
     localStorage.clear();
   });
 
-  it("defaults embedding model to product standard mxbai-embed-large:latest", () => {
-    expect(defaultLabEvaluationDraft().embeddingModelId).toBe(LAB_DEFAULT_EMBEDDING_MODEL_ID);
+  it("defaults embedding model empty until catalog API selects usableAsDefault", () => {
+    expect(defaultLabEvaluationDraft().embeddingModelId).toBe("");
+    expect(LAB_DEFAULT_EMBEDDING_MODEL_ID).toBe("");
   });
 
   it("uses versioned storage keys per benchmark kind", () => {
@@ -115,7 +118,7 @@ describe("lab-evaluation-draft", () => {
       compatibleDatasetRows: [{ id: "d" } as ExperimentalDatasetListItemDto],
       allDatasetRows: [{ id: "d" } as ExperimentalDatasetListItemDto],
       datasetsFetched: true,
-      availableLlmModelIds: [],
+      availableLlmModelIds: ["catalog-llm"],
       availableEmbeddingModelIds: [],
       catalogPresetCodes: ["P0", "P1"],
       presetsCatalogReady: true,
@@ -131,7 +134,7 @@ describe("lab-evaluation-draft", () => {
       compatibleDatasetRows: [],
       allDatasetRows: [],
       datasetsFetched: false,
-      availableLlmModelIds: [],
+      availableLlmModelIds: ["catalog-llm"],
       availableEmbeddingModelIds: [],
       catalogPresetCodes: [],
       presetsCatalogReady: false,
@@ -148,7 +151,7 @@ describe("lab-evaluation-draft", () => {
       compatibleDatasetRows: [],
       allDatasetRows: [{ id: "d-other" } as ExperimentalDatasetListItemDto],
       datasetsFetched: true,
-      availableLlmModelIds: [],
+      availableLlmModelIds: ["catalog-llm"],
       availableEmbeddingModelIds: [],
       catalogPresetCodes: [],
       presetsCatalogReady: false,
@@ -165,7 +168,7 @@ describe("lab-evaluation-draft", () => {
       compatibleDatasetRows: [{ id: "d2" } as ExperimentalDatasetListItemDto],
       allDatasetRows: [{ id: "d1" } as ExperimentalDatasetListItemDto],
       datasetsFetched: true,
-      availableLlmModelIds: [],
+      availableLlmModelIds: ["catalog-llm"],
       availableEmbeddingModelIds: [],
       catalogPresetCodes: [],
       presetsCatalogReady: false,
@@ -174,11 +177,11 @@ describe("lab-evaluation-draft", () => {
     expect(w.datasetIncompatibleWithBenchmark).toBe(true);
   });
 
-  it("validates llmModelId for non-embedding benchmark kinds only", () => {
+  it("does not validate llmModelId for RAG (answer generation uses task-level settings)", () => {
     const base = defaultLabEvaluationDraft();
     const wJudge = computeLabEvaluationDraftWarnings({
       kind: "LLM_JUDGE_QA",
-      draft: { ...base, datasetId: "d", llmModelId: "missing-llm" },
+      draft: { ...base, datasetId: "d", llmModelId: "missing-llm", llmModelIds: ["ok-llm"] },
       compatibleDatasetRows: [{ id: "d" } as ExperimentalDatasetListItemDto],
       allDatasetRows: [{ id: "d" } as ExperimentalDatasetListItemDto],
       datasetsFetched: true,
@@ -187,7 +190,20 @@ describe("lab-evaluation-draft", () => {
       catalogPresetCodes: [],
       presetsCatalogReady: false,
     });
-    expect(wJudge.llmModelInvalid).toBe(true);
+    expect(wJudge.llmModelInvalid).toBe(false);
+
+    const wRag = computeLabEvaluationDraftWarnings({
+      kind: "RAG_PRESET_END_TO_END",
+      draft: { ...base, datasetId: "d", llmModelId: "missing-llm" },
+      compatibleDatasetRows: [{ id: "d" } as ExperimentalDatasetListItemDto],
+      allDatasetRows: [{ id: "d" } as ExperimentalDatasetListItemDto],
+      datasetsFetched: true,
+      availableLlmModelIds: ["ok-llm"],
+      availableEmbeddingModelIds: ["ok-emb"],
+      catalogPresetCodes: ["P0"],
+      presetsCatalogReady: true,
+    });
+    expect(wRag.llmModelInvalid).toBe(false);
 
     const wEmbedding = computeLabEvaluationDraftWarnings({
       kind: "EMBEDDING_RETRIEVAL",
@@ -273,7 +289,7 @@ describe("lab-evaluation-draft", () => {
       compatibleDatasetRows: [{ id: "d" } as ExperimentalDatasetListItemDto],
       allDatasetRows: [{ id: "d" } as ExperimentalDatasetListItemDto],
       datasetsFetched: true,
-      availableLlmModelIds: [],
+      availableLlmModelIds: ["catalog-llm"],
       availableEmbeddingModelIds: [],
       catalogPresetCodes: [],
       presetsCatalogReady: false,
@@ -281,9 +297,84 @@ describe("lab-evaluation-draft", () => {
     expect(w.presetsUnknown).toEqual([]);
   });
 
+  it("flags dataset warnings when catalog is empty", () => {
+    const draft = { ...defaultLabEvaluationDraft(), datasetId: "d-missing" };
+    const w = computeLabEvaluationDraftWarnings({
+      kind: "LLM_JUDGE_QA",
+      draft,
+      compatibleDatasetRows: [],
+      allDatasetRows: [{ id: "d-other" } as ExperimentalDatasetListItemDto],
+      datasetsFetched: true,
+      availableLlmModelIds: [],
+      availableEmbeddingModelIds: [],
+      catalogPresetCodes: [],
+      presetsCatalogReady: false,
+    });
+    expect(w.datasetDeletedOrUnknown).toBe(true);
+    expect(w.llmModelInvalid).toBe(false);
+  });
+
   it("clearLabEvaluationDraftStorage removes persisted drafts", () => {
     saveLabEvaluationDraft("LLM_JUDGE_QA", { ...defaultLabEvaluationDraft(), datasetId: "x" });
     clearLabEvaluationDraftStorage("LLM_JUDGE_QA");
     expect(loadLabEvaluationDraft("LLM_JUDGE_QA").datasetId).toBeNull();
+  });
+
+  it("strips legacy stale model ids on load without persisting warnings", () => {
+    saveLabEvaluationDraft("EMBEDDING_RETRIEVAL", {
+      ...defaultLabEvaluationDraft(),
+      embeddingModelId: "mxbai-embed-large:latest",
+      embeddingModelIds: ["mxbai-embed-large", "bge-m3"],
+      llmModelId: "gemma3:4b",
+      llmModelIds: ["mistral:7b", "qwen3:8b"],
+    });
+    const loaded = loadLabEvaluationDraft("EMBEDDING_RETRIEVAL");
+    expect(loaded.embeddingModelId).toBe("");
+    expect(loaded.embeddingModelIds).toEqual(["bge-m3"]);
+    expect(loaded.llmModelId).toBe("");
+    expect(loaded.llmModelIds).toEqual(["qwen3:8b"]);
+    const warnings = computeLabEvaluationDraftWarnings({
+      kind: "EMBEDDING_RETRIEVAL",
+      draft: loaded,
+      compatibleDatasetRows: [],
+      allDatasetRows: [],
+      datasetsFetched: true,
+      availableLlmModelIds: ["qwen3:8b"],
+      availableEmbeddingModelIds: ["bge-m3", "snowflake-arctic-embed2"],
+      catalogPresetCodes: [],
+      presetsCatalogReady: false,
+    });
+    expect(warnings.embeddingModelsInvalid).toEqual([]);
+    expect(warnings.llmModelsInvalid).toEqual([]);
+  });
+
+  it("migrateLabDraftModelsFromCatalog removes catalog-invalid ids and keeps valid selections", () => {
+    const migrated = migrateLabDraftModelsFromCatalog(
+      {
+        ...defaultLabEvaluationDraft(),
+        embeddingModelIds: ["bge-m3", "mxbai-embed-large", "snowflake-arctic-embed2"],
+        llmModelIds: ["gemma4:12b", "gemma3:4b", "qwen3:8b"],
+      },
+      ["gemma4:12b", "qwen3:8b"],
+      ["bge-m3", "snowflake-arctic-embed2", "hf.co/mixedbread-ai/mxbai-embed-large-v1"],
+      "LLM_JUDGE_QA",
+    );
+    expect(migrated.embeddingModelIds).toEqual(["bge-m3", "snowflake-arctic-embed2"]);
+    expect(migrated.llmModelIds).toEqual(["gemma4:12b", "qwen3:8b"]);
+    expect(migrated.embeddingModelId).toBe("bge-m3");
+  });
+
+  it("stripLegacyStaleLabModelIds removes known legacy preferred models", () => {
+    const stripped = stripLegacyStaleLabModelIds({
+      ...defaultLabEvaluationDraft(),
+      llmModelId: "mistral:7b",
+      llmModelIds: ["gemma3:4b"],
+      embeddingModelId: "mxbai-embed-large:latest",
+      embeddingModelIds: ["mxbai-embed-large"],
+    });
+    expect(stripped.llmModelId).toBe("");
+    expect(stripped.llmModelIds).toEqual([]);
+    expect(stripped.embeddingModelId).toBe("");
+    expect(stripped.embeddingModelIds).toEqual([]);
   });
 });

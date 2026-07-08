@@ -45,7 +45,7 @@ class ChatRuntimeStateServiceTest {
     }
 
     @Test
-    void runtimeState_normalizesOverride_keysEqualToBaseAreRemoved_andIsCustomReflectsManualKeys() {
+    void runtimeState_persistedSnapshotReturned_andIsCustomWhenNonEmpty() {
         UUID uid = UUID.randomUUID();
         UUID cid = UUID.randomUUID();
         UUID pid = UUID.randomUUID();
@@ -60,7 +60,6 @@ class ChatRuntimeStateServiceTest {
 
         when(chatPresetDefaults.effectivePresetIdForApi(null)).thenReturn(ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID);
 
-        // Base effective config: useRetrieval=true, reasoningEnabled=false
         when(runtimeConfigValidationService.validate(eq(uid), any()))
                 .thenReturn(
                         new RuntimeConfigValidateResponse(
@@ -75,14 +74,13 @@ class ChatRuntimeStateServiceTest {
 
         var dto = sut.getRuntimeState(uid, cid);
 
-        // useRetrieval matches base => removed; reasoningEnabled differs => kept
-        assertThat(dto.runtimeOverride()).containsOnlyKeys("reasoningEnabled");
-        assertThat(dto.manualOverrideKeys()).containsExactly("reasoningEnabled");
+        assertThat(dto.runtimeOverride()).containsEntry("useRetrieval", true).containsEntry("reasoningEnabled", true);
+        assertThat(dto.manualOverrideKeys()).containsExactlyInAnyOrder("reasoningEnabled", "useRetrieval");
         assertThat(dto.isCustom()).isTrue();
     }
 
     @Test
-    void runtimeState_whenAllOverridesEqualToBase_isCustomFalse_andOverrideEmpty() {
+    void runtimeState_whenSnapshotMatchesBaseKeysStillMarkedCustom() {
         UUID uid = UUID.randomUUID();
         UUID cid = UUID.randomUUID();
         UUID pid = UUID.randomUUID();
@@ -110,9 +108,9 @@ class ChatRuntimeStateServiceTest {
                                 false));
 
         var dto = sut.getRuntimeState(uid, cid);
-        assertThat(dto.runtimeOverride()).isEmpty();
-        assertThat(dto.manualOverrideKeys()).isEmpty();
-        assertThat(dto.isCustom()).isFalse();
+        assertThat(dto.runtimeOverride()).containsEntry("useRetrieval", true);
+        assertThat(dto.manualOverrideKeys()).containsExactly("useRetrieval");
+        assertThat(dto.isCustom()).isTrue();
     }
 
     @Test

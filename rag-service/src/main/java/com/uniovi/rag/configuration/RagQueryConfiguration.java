@@ -18,6 +18,9 @@ import com.uniovi.rag.infrastructure.observability.TracedReasoningStrategy;
 import com.uniovi.rag.infrastructure.observability.TracedResponseRanker;
 import com.uniovi.rag.infrastructure.observability.TracedResponseValidator;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
+import com.uniovi.rag.application.config.ConfigurablePromptResolver;
+import com.uniovi.rag.application.service.llm.LlmErrorComposer;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 import com.uniovi.rag.application.service.runtime.query.analyser.MinuteNERQueryAnalyser;
 import com.uniovi.rag.application.service.runtime.query.analyser.NERQueryEnricher;
 import com.uniovi.rag.application.service.runtime.query.analyser.NoOpQueryAnalyser;
@@ -67,7 +70,7 @@ public class RagQueryConfiguration {
     @Bean
     public QuestionAnswerAdvisor questionAnswerAdvisor(
             PgVectorStore vectorStore,
-            @Value("${spring.ai.ollama.top-k:10}") int topK,
+            @Value("${spring.ai.ollama.top-k:8}") int topK,
             @Value("${spring.ai.ollama.similarity-threshold:0.7}") double similarityThreshold
     ) {
         return QuestionAnswerAdvisor.builder(vectorStore)
@@ -92,10 +95,10 @@ public class RagQueryConfiguration {
     @Bean
     public ReasoningStrategy reasoningStrategy(
             RagReasoningProperties reasoningProperties,
-            ChatClient chatClient,
+            ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor,
             @Autowired(required = false) ObservabilitySupport observability
     ) {
-        ReasoningStrategy raw = new SelectingReasoningStrategy(chatClient, reasoningProperties);
+        ReasoningStrategy raw = new SelectingReasoningStrategy(secondaryLlmExecutor, reasoningProperties);
         if (observability != null) {
             return new TracedReasoningStrategy(raw, observability);
         }
@@ -105,13 +108,14 @@ public class RagQueryConfiguration {
     @Bean
     public ResponseRanker responseRanker(
             RagRankerProperties rankerProperties,
-            ChatClient chatClient,
+            ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor,
+            ConfigurablePromptResolver promptResolver,
             @Autowired(required = false) ObservabilitySupport observability
     ) {
         String strategy = rankerProperties.getStrategy() != null ? rankerProperties.getStrategy().toUpperCase() : "LLM_AS_JUDGE";
         ResponseRanker raw = "FAITHFULNESS".equals(strategy)
-                ? new FaithfulnessRanker(chatClient)
-                : new LLMAsJudgeRanker(chatClient);
+                ? new FaithfulnessRanker(secondaryLlmExecutor)
+                : new LLMAsJudgeRanker(secondaryLlmExecutor, promptResolver);
         if (observability != null) {
             return new TracedResponseRanker(raw, observability);
         }
@@ -120,7 +124,8 @@ public class RagQueryConfiguration {
 
     @Bean
     public QueryExpander queryExpander(
-            ChatClient chatClient,
+            ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor,
+            ConfigurablePromptResolver promptResolver,
             @Value("${rag.expansion.strategy:COT}") String expansionStrategy,
             @Value("${rag.expansion.original-repeat:1}") int originalRepeat,
             @Value("${rag.expansion.max-expansion-chars:350}") int maxExpansionChars,
@@ -135,15 +140,16 @@ public class RagQueryConfiguration {
         } catch (Exception e) {
             strategy = ExpansionStrategy.COT;
         }
-        QueryExpander raw = new MinuteDocumentStructureExpander(
-            chatClient,
-            strategy,
-            originalRepeat,
-            maxExpansionChars,
-            maxQueryTotalChars,
-            maxQueryLengthForLlm,
-            retryQueryLength
-        );
+        QueryExpander raw =
+                new MinuteDocumentStructureExpander(
+                        secondaryLlmExecutor,
+                        strategy,
+                        originalRepeat,
+                        maxExpansionChars,
+                        maxQueryTotalChars,
+                        maxQueryLengthForLlm,
+                        retryQueryLength,
+                        promptResolver);
         if (observability != null) {
             return new TracedQueryExpander(raw, observability);
         }
@@ -152,7 +158,7 @@ public class RagQueryConfiguration {
 
     /**
      * Shared {@link RestTemplate} for classifier HTTP calls. Uses {@link SimpleClientHttpRequestFactory}
-     * (HTTP/1.1) so uvicorn receives plain POST JSON — not JDK HttpClient HTTP/2 upgrade attempts.
+     * (HTTP/1.1) so uvicorn receives plain POST JSON - not JDK HttpClient HTTP/2 upgrade attempts.
      * Micrometer tracing still applies via {@link RestTemplateBuilder}.
      */
     @Bean(name = "classifierRestTemplate")
@@ -192,7 +198,8 @@ public class RagQueryConfiguration {
 
     @Bean
     public QueryAnalyser queryAnalyser(
-            @Nullable ChatClient chatClient,
+            ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor,
+            ConfigurablePromptResolver promptResolver,
             RagImplementationProperties implProps,
             @Autowired(required = false) ObservabilitySupport observability
     ) {
@@ -200,11 +207,10 @@ public class RagQueryConfiguration {
         QueryAnalyser raw;
         if ("no-op".equals(impl)) {
             raw = new NoOpQueryAnalyser();
-        } else if (chatClient == null) {
-            // Degrade gracefully when Spring AI chat client is not configured.
+        } else if (secondaryLlmExecutor == null) {
             raw = new NoOpQueryAnalyser();
         } else {
-            raw = new MinuteNERQueryAnalyser(chatClient);
+            raw = new MinuteNERQueryAnalyser(secondaryLlmExecutor, promptResolver);
         }
         if (observability != null) {
             return new TracedQueryAnalyser(raw, observability);
@@ -260,23 +266,23 @@ public class RagQueryConfiguration {
 
     @Bean
     public QueryExecutionService queryService(
-            ChatClient chatClient,
             OllamaConnectivityChecker ollamaConnectivityChecker,
             ExecutionContextFactory executionContextFactory,
             RagExecutionOrchestrator ragExecutionOrchestrator,
             RuntimeTracePersistenceService runtimeTracePersistenceService,
             KnowledgeDocumentRepository knowledgeDocumentRepository,
             ChatGenerationModelSelector chatGenerationModelSelector,
+            LlmErrorComposer llmErrorComposer,
             @Autowired(required = false) ObservabilitySupport observability) {
         QueryExecutionService raw =
                 new RuntimeQueryExecutionService(
                         executionContextFactory,
                         ragExecutionOrchestrator,
                         runtimeTracePersistenceService,
-                        chatClient,
                         ollamaConnectivityChecker,
                         knowledgeDocumentRepository,
-                        chatGenerationModelSelector);
+                        chatGenerationModelSelector,
+                        llmErrorComposer);
         if (observability != null) {
             return new TracedQueryService(raw, observability);
         }

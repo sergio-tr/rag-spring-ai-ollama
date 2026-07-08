@@ -1,6 +1,6 @@
 # Optional: re-run Playwright smoke only (same as core_webapp_e2e in ci.yml).
 # Automated PR/push runs: .github/workflows/ci.yml (unit + build + Playwright smoke).
-name: E2E (Playwright) — manual
+name: E2E (Playwright) - manual
 
 on:
   workflow_dispatch:
@@ -38,8 +38,7 @@ jobs:
       - name: Build Next.js
         run: npm run build
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+      - uses: ./.github/actions/install-playwright-chromium
 
       - name: Run Playwright smoke (@smoke, no @fullstack)
         run: npm run test:e2e:ci-fast

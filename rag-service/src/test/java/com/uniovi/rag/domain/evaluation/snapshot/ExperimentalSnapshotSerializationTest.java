@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -29,6 +30,11 @@ class ExperimentalSnapshotSerializationTest {
                         List.of("</s>"),
                         "json",
                         false,
+                        "OLLAMA_NATIVE",
+                        "OLLAMA_NATIVE",
+                        60_000,
+                        Map.of("seed", 123),
+                        Map.of("temperature", "RESOLVED_CONFIG"),
                         List.of("minP"));
         String json = mapper.writeValueAsString(orig);
         LlmExperimentalSnapshot back = mapper.readValue(json, LlmExperimentalSnapshot.class);
@@ -39,7 +45,7 @@ class ExperimentalSnapshotSerializationTest {
     void embeddingExperimentalSnapshot_roundTrip() throws Exception {
         EmbeddingExperimentalSnapshot orig =
                 new EmbeddingExperimentalSnapshot(
-                        "mxbai", 1024, true, "q:", "p:", 32, "truncate_tail", List.of("normalize_runtime"));
+                        "mxbai", 1024, true, "q:", "p:", 32, "truncate_tail", "OLLAMA_NATIVE", "OLLAMA_NATIVE", Map.of("model", "RESOLVED_CONFIG"), List.of("normalize_runtime"));
         String json = mapper.writeValueAsString(orig);
         assertThat(mapper.readValue(json, EmbeddingExperimentalSnapshot.class)).isEqualTo(orig);
     }

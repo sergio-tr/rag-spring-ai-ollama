@@ -23,7 +23,7 @@ run simulations.ProductUnauthenticatedSimulation GATLING_UNAUTH_VUS=3 GATLING_UN
 run simulations.AuthLoginNegativeSimulation GATLING_AUTH_NEG_VUS=2 GATLING_AUTH_NEG_ITERATION_SEC=8
 run simulations.AdminApiSimulation GATLING_ADMIN_API_VUS=2
 
-# Realistic mix (auth + admin/product) — uncomment when Ollama capacity is acceptable:
+# Realistic mix (auth + admin/product) - uncomment when Ollama capacity is acceptable:
 # run simulations.MixedRealisticSmokeSimulation \
 #   GATLING_MIX_SMOKE_VUS=2 GATLING_MIX_SMOKE_DURATION_SEC=45 GATLING_MIX_SMOKE_RAMP_SEC=8
 

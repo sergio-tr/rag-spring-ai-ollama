@@ -14,9 +14,13 @@ import com.uniovi.rag.application.service.runtime.memory.ConversationRecallGuard
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingPolicyResolver;
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
 import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
+import com.uniovi.rag.application.service.runtime.query.IncompleteQueryHeuristics;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
 import com.uniovi.rag.application.service.runtime.reasoning.AnswerVerificationService;
 import com.uniovi.rag.application.service.runtime.reasoning.StructuredAnswerPlanService;
+import com.uniovi.rag.application.service.runtime.optimization.DeterministicStructuredAnswerPlanFactory;
+import com.uniovi.rag.application.service.runtime.optimization.RagLlmCallBudgetPolicy;
+import com.uniovi.rag.application.service.runtime.observability.RagStageTimingTelemetry;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.routing.DeterministicToolRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.routing.AdvisorRoutingStrategy;
@@ -44,7 +48,9 @@ import com.uniovi.rag.application.service.runtime.routing.safety.P15ParentCandid
 import com.uniovi.rag.application.service.runtime.routing.safety.ParentCampaignOutcomeTelemetryPreservation;
 import com.uniovi.rag.application.service.runtime.routing.safety.ParentCandidateSnapshot;
 import java.util.Objects;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMappings;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolNegativeFallbackPolicy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.application.service.runtime.routing.safety.RouteCandidateValidationResult;
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
@@ -52,6 +58,7 @@ import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
+import com.uniovi.rag.domain.runtime.RagSnapshotContextHolder;
 import com.uniovi.rag.domain.runtime.advisor.AdvisorDecision;
 import com.uniovi.rag.domain.runtime.advisor.AdvisorExecutionResult;
 import com.uniovi.rag.domain.runtime.advisor.AdvisorOutcome;
@@ -179,6 +186,8 @@ public class RagExecutionOrchestrator {
         long quStart = System.nanoTime();
         QueryPlan plan = queryUnderstandingPipeline.buildPlan(ctx);
         ExecutionContext withPlan = executionContextFactory.attachQueryPlan(ctx, plan);
+        RagStageTimingTelemetry.logStage(
+                ctx, "query_understanding", RagStageTimingTelemetry.elapsedMs(quStart), "OK", "qu_completed");
 
         List<ExecutionStageTrace> quStages = RagExecutionTraceSupport.projectQuStages(plan);
         quStages.add(
@@ -189,8 +198,37 @@ public class RagExecutionOrchestrator {
                         ExecutionStageOutcome.SUCCESS,
                         "qu_status=OK message=QueryUnderstandingPipeline completed"));
 
-        ClarificationDecision clarificationDecision = clarificationPolicyResolver.resolve(withPlan, plan);
         List<ExecutionStageTrace> clarifyAfterQu = new ArrayList<>();
+
+        if (conversationRecallGuard.shouldShortCircuit(withPlan)) {
+            ClarificationDecision guardSkipped =
+                    new ClarificationDecision(
+                            false, ClarificationOutcome.NOT_NEEDED, null, "recall_guard_before_clarification");
+            clarifyAfterQu.add(RagExecutionTraceSupport.clarificationPolicyStage(guardSkipped));
+            return finishConversationRecallShortCircuit(
+                    withPlan,
+                    clarifyBeforeQu,
+                    memoryBeforeQu,
+                    quStages,
+                    clarifyAfterQu,
+                    guardSkipped);
+        }
+
+        if (conversationRecallGuard.shouldShortCircuitAmbiguousActaQuery(withPlan)) {
+            ClarificationDecision guardSkipped =
+                    new ClarificationDecision(
+                            false, ClarificationOutcome.NOT_NEEDED, null, "ambiguous_acta_guard_before_clarification");
+            clarifyAfterQu.add(RagExecutionTraceSupport.clarificationPolicyStage(guardSkipped));
+            return finishAmbiguousActaShortCircuit(
+                    withPlan,
+                    clarifyBeforeQu,
+                    memoryBeforeQu,
+                    quStages,
+                    clarifyAfterQu,
+                    guardSkipped);
+        }
+
+        ClarificationDecision clarificationDecision = clarificationPolicyResolver.resolve(withPlan, plan);
         clarifyAfterQu.add(RagExecutionTraceSupport.clarificationPolicyStage(clarificationDecision));
 
         if (clarificationDecision.ask()) {
@@ -211,24 +249,22 @@ public class RagExecutionOrchestrator {
             clarificationStrategy.clearAfterResolved(withPlan.conversationId());
         }
 
-        if (conversationRecallGuard.shouldShortCircuit(withPlan)) {
-            return finishConversationRecallShortCircuit(
+        Optional<IncompleteQueryHeuristics.Signal> incompleteQuery = IncompleteQueryHeuristics.detect(plan);
+        if (incompleteQuery.isPresent() && !clarificationDecision.ask()) {
+            clarifyAfterQu.add(
+                    new ExecutionStageTrace(
+                            "incomplete_query_guard",
+                            0L,
+                            ExecutionStageOutcome.SUCCESS,
+                            incompleteQuery.get().traceNote()));
+            return finishIncompleteQueryShortCircuit(
                     withPlan,
                     clarifyBeforeQu,
                     memoryBeforeQu,
                     quStages,
                     clarifyAfterQu,
-                    clarificationDecision);
-        }
-
-        if (conversationRecallGuard.shouldShortCircuitAmbiguousActaQuery(withPlan)) {
-            return finishAmbiguousActaShortCircuit(
-                    withPlan,
-                    clarifyBeforeQu,
-                    memoryBeforeQu,
-                    quStages,
-                    clarifyAfterQu,
-                    clarificationDecision);
+                    clarificationDecision,
+                    incompleteQuery.get());
         }
 
         RoutingSnapshot routing = resolveRoutingSnapshot(withPlan, plan);
@@ -375,9 +411,20 @@ public class RagExecutionOrchestrator {
 
         DeterministicToolExecutionResult toolResult = deterministicToolStrategy.tryExecute(base, plan);
         RouteCandidateValidationResult toolValidation = null;
+        boolean toolNegativeDeferred =
+                toolResult.outcome() == DeterministicToolOutcome.EXECUTED_SUCCESS
+                        && toolResult.success()
+                        && DeterministicToolNegativeFallbackPolicy.shouldDeferToolTerminalFinish(
+                                rag.useRetrieval(), toolResult);
+        if (toolNegativeDeferred) {
+            telemetry.toolNegativeFallbackApplied(true)
+                    .toolCandidateRejected(true)
+                    .rejectCandidate("TOOL", DeterministicToolNegativeFallbackPolicy.REJECTION_REASON);
+        }
         if (toolResult.outcome() == DeterministicToolOutcome.EXECUTED_SUCCESS && toolResult.success()) {
             toolValidation = monotonicRouteSafetyService.validateToolResult(plan, toolResult);
-            if (DeterministicToolTerminalAnswerGuard.shouldFinishTerminal(plan, toolResult, toolValidation)) {
+            if (!toolNegativeDeferred
+                    && DeterministicToolTerminalAnswerGuard.shouldFinishTerminal(plan, toolResult, toolValidation)) {
                 boolean deterministicFinal =
                         DeterministicToolTerminalAnswerGuard.shouldMarkDeterministicToolFinal(
                                 plan, toolValidation);
@@ -543,6 +590,17 @@ public class RagExecutionOrchestrator {
             ExecutionOutcome retrievalOutcome,
             RouteCandidateValidationResult retrievalValidation,
             MonotonicSafetyTelemetry telemetry) {
+        if (toolScore.isPresent()
+                && DeterministicToolNegativeFallbackPolicy.shouldPreferRetrievalOverTool(
+                        toolResult,
+                        retrievalOutcome.result(),
+                        retrievalOutcome.trace().abstentionTriggered())) {
+            telemetry.toolNegativeFallbackApplied(true)
+                    .selectedCandidateSource("RETRIEVAL")
+                    .monotonicRegressionPrevented(true)
+                    .constraintCoverageStatus(retrievalValidation.constraintCoverageStatus());
+            return finalizeIntegratedRetrievalOutcome(retrievalOutcome, telemetry, true);
+        }
         if (toolScore.isPresent()) {
             boolean deterministicFinal =
                     DeterministicToolTerminalAnswerGuard.shouldMarkDeterministicToolFinal(
@@ -648,28 +706,13 @@ public class RagExecutionOrchestrator {
                 DeterministicToolTerminalAnswerGuard.finalityForTerminal(deterministicToolFinal));
     }
 
-    @SuppressWarnings("unchecked")
     private static List<Map<String, Object>> responseSourcesFromToolPayload(
             DeterministicToolExecutionResult toolResult) {
-        if (toolResult == null || toolResult.normalizedPayload() == null) {
+        if (toolResult == null) {
             return List.of();
         }
-        Object sources = toolResult.normalizedPayload().get("responseSources");
-        if (sources == null) {
-            sources = toolResult.normalizedPayload().get("sources");
-        }
-        if (!(sources instanceof List<?> list) || list.isEmpty()) {
-            return List.of();
-        }
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Object item : list) {
-            if (item instanceof Map<?, ?> map) {
-                Map<String, Object> copy = new LinkedHashMap<>();
-                map.forEach((k, v) -> copy.put(String.valueOf(k), v));
-                out.add(copy);
-            }
-        }
-        return List.copyOf(out);
+        return ResponseSourcesBackfill.fromToolExecution(
+                toolResult.normalizedPayload(), toolResult.answerText());
     }
 
     private ExecutionOutcome executeFunctionCallingRoute(
@@ -838,7 +881,7 @@ public class RagExecutionOrchestrator {
                 true,
                 List.of(),
                 Optional.empty(),
-                List.of(),
+                ResponseSourcesBackfill.fromToolExecution(fr.normalizedPayload(), fr.answerText()),
                 AnswerFinality.STANDARD);
     }
 
@@ -948,10 +991,29 @@ public class RagExecutionOrchestrator {
         ExecutionContext effectiveCtx = ctxForWorkflow;
         var rag = ctxForWorkflow.resolved().toRagConfig();
         if (rag.reasoningEnabled()) {
-            var planResult = structuredAnswerPlanService.plan(ctxForWorkflow, plan);
-            reasoningStages.addAll(planResult.stageTraces());
-            if (planResult.plan().isPresent()) {
-                effectiveCtx = executionContextFactory.attachStructuredAnswerPlan(ctxForWorkflow, planResult.plan().get());
+            RagLlmCallBudgetPolicy.SkipDecision planSkip =
+                    RagLlmCallBudgetPolicy.structuredPlanDecision(ctxForWorkflow, plan);
+            if (planSkip.skip()) {
+                var deterministicPlan = DeterministicStructuredAnswerPlanFactory.build(plan);
+                if (deterministicPlan.isPresent()) {
+                    effectiveCtx =
+                            executionContextFactory.attachStructuredAnswerPlan(
+                                    ctxForWorkflow, deterministicPlan.get());
+                }
+                reasoningStages.add(
+                        new ExecutionStageTrace(
+                                "reasoning_plan",
+                                0L,
+                                ExecutionStageOutcome.SUCCESS,
+                                "status=SKIPPED reason=" + planSkip.reason()));
+            } else {
+                var planResult = structuredAnswerPlanService.plan(ctxForWorkflow, plan);
+                reasoningStages.addAll(planResult.stageTraces());
+                if (planResult.plan().isPresent()) {
+                    effectiveCtx =
+                            executionContextFactory.attachStructuredAnswerPlan(
+                                    ctxForWorkflow, planResult.plan().get());
+                }
             }
         }
 
@@ -959,6 +1021,7 @@ public class RagExecutionOrchestrator {
                 selectExecutableWorkflow(effectiveCtx, workflowSelector.select(effectiveCtx));
         String wname = workflow.workflowName();
         RagExecutionContextHolder.set(toRagExecutionContextHolder(effectiveCtx));
+        RagSnapshotContextHolder.set(effectiveCtx.knowledgeSnapshotSelection().orderedSnapshotIds());
         try {
             RuntimeObservability obs = runtimeObservability != null ? runtimeObservability.getIfAvailable() : null;
             final int promptChars =
@@ -1028,6 +1091,8 @@ public class RagExecutionOrchestrator {
                     new ExecutionOutcome(judgedPartial, trace));
         } finally {
             RagExecutionContextHolder.clear();
+            RagSnapshotContextHolder.clear();
+            DeterministicToolEvidenceHolder.clear();
         }
     }
 
@@ -1182,6 +1247,64 @@ public class RagExecutionOrchestrator {
         return partial.withFinalTrace(trace);
     }
 
+    private RagExecutionResult finishIncompleteQueryShortCircuit(
+            ExecutionContext withPlan,
+            List<ExecutionStageTrace> clarifyBeforeQu,
+            List<ExecutionStageTrace> memoryBeforeQu,
+            List<ExecutionStageTrace> quStages,
+            List<ExecutionStageTrace> clarifyAfterQu,
+            ClarificationDecision clarificationDecision,
+            IncompleteQueryHeuristics.Signal incompleteSignal) {
+        String answer = IncompleteQueryHeuristics.abstentionMessage(incompleteSignal);
+        DeterministicToolExecutionResult toolResult =
+                DeterministicToolExecutionResult.skipped(
+                        DeterministicToolOutcome.NOT_ATTEMPTED,
+                        List.of("suppressed_incomplete_query_guard"),
+                        Optional.empty());
+        List<ExecutionStageTrace> toolStages = RagExecutionTraceSupport.projectDeterministicToolStages(toolResult);
+        FcGate fcGate = FcGate.notAttempted(FunctionCallingOutcome.SUPPRESSED_BY_CLARIFICATION);
+        RagExecutionResult partial =
+                RagExecutionResult.withPlaceholderTrace(
+                        answer,
+                        "incomplete-query-guard",
+                        false,
+                        false,
+                        withPlan.knowledgeSnapshotSelection().orderedSnapshotIds(),
+                        "none",
+                        List.of());
+        ExecutionTrace trace =
+                RagExecutionTraceSupport.assembleTrace(
+                        withPlan,
+                        partial,
+                        "incomplete-query-guard",
+                        clarifyBeforeQu,
+                        memoryBeforeQu,
+                        quStages,
+                        List.of(),
+                        clarifyAfterQu,
+                        List.of(),
+                        toolStages,
+                        fcGate.stageTraces(),
+                        toolResult,
+                        fcGate.functionCallingAttempted(),
+                        fcGate.functionCallingOutcome(),
+                        fcGate.functionCallingToolKind(),
+                        fcGate.functionCallingShortCircuited(),
+                        AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_CLARIFICATION),
+                        JudgeSnapshot.notAttempted(JudgeCandidateSource.WORKFLOW),
+                        new RoutingSnapshot(
+                                AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                                Optional.empty(),
+                                List.of(),
+                                false,
+                                AdaptiveRoutingOutcome.SUPPRESSED_BY_CLARIFICATION_SHORT_CIRCUIT,
+                                false,
+                                Optional.empty(),
+                                false),
+                        clarificationDecision);
+        return partial.withFinalTrace(trace);
+    }
+
     private RagExecutionResult finishConversationRecallShortCircuit(
             ExecutionContext withPlan,
             List<ExecutionStageTrace> clarifyBeforeQu,
@@ -1266,6 +1389,10 @@ public class RagExecutionOrchestrator {
 
     private static RagExecutionResult applyJudgeToResult(RagExecutionResult base, JudgeSnapshot judge) {
         if (judge.finalAnswerFromRetry()) {
+            List<Map<String, Object>> sources =
+                    ResponseSourcesBackfill.merge(
+                            base.responseSources(),
+                            ResponseSourcesBackfill.fromToolExecution(Map.of(), judge.finalAnswerText()));
             return new RagExecutionResult(
                     judge.finalAnswerText(),
                     base.workflowName(),
@@ -1280,7 +1407,7 @@ public class RagExecutionOrchestrator {
                     base.usedTool(),
                     base.workflowStageTraces(),
                     base.retrievalDiagnostics(),
-                    base.responseSources(),
+                    sources,
                     base.answerFinality());
         }
         return base;
@@ -1390,13 +1517,7 @@ public class RagExecutionOrchestrator {
     }
 
     private static RagExecutionContext toRagExecutionContextHolder(ExecutionContext ctx) {
-        return new RagExecutionContext(
-                ctx.conversationId() != null ? ctx.conversationId().toString() : null,
-                ctx.userId() != null ? ctx.userId().toString() : null,
-                ctx.projectId() != null ? ctx.projectId().toString() : null,
-                ctx.resolved().toRagConfig(),
-                ctx.documentFilter(),
-                ctx.correlationId());
+        return RagExecutionContext.fromEngineContext(ctx);
     }
 
     private ExecutionOutcome executeIntegratedAdaptiveRoute(
@@ -1424,16 +1545,23 @@ public class RagExecutionOrchestrator {
         if (rag.toolsEnabled()) {
             toolResult = deterministicToolStrategy.tryExecute(base, plan);
             if (toolResult.outcome() == DeterministicToolOutcome.EXECUTED_SUCCESS && toolResult.success()) {
-                RouteCandidateValidationResult validation =
-                        monotonicRouteSafetyService.validateToolResult(plan, toolResult);
-                if (validation.safe()) {
-                    toolScore =
-                            Optional.of(
-                                    new MonotonicRouteSafetyService.CandidateScore(
-                                            "TOOL", validation, toolResult.answerText()));
+                if (DeterministicToolNegativeFallbackPolicy.shouldDeferToolTerminalFinish(
+                        rag.useRetrieval(), toolResult)) {
+                    telemetry.toolNegativeFallbackApplied(true)
+                            .toolCandidateRejected(true)
+                            .rejectCandidate("TOOL", DeterministicToolNegativeFallbackPolicy.REJECTION_REASON);
                 } else {
-                    telemetry.toolCandidateRejected(true)
-                            .rejectCandidate("TOOL", String.join(",", validation.rejectionReasons()));
+                    RouteCandidateValidationResult validation =
+                            monotonicRouteSafetyService.validateToolResult(plan, toolResult);
+                    if (validation.safe()) {
+                        toolScore =
+                                Optional.of(
+                                        new MonotonicRouteSafetyService.CandidateScore(
+                                                "TOOL", validation, toolResult.answerText()));
+                    } else {
+                        telemetry.toolCandidateRejected(true)
+                                .rejectCandidate("TOOL", String.join(",", validation.rejectionReasons()));
+                    }
                 }
             }
         }
@@ -1851,6 +1979,16 @@ public class RagExecutionOrchestrator {
             }
             case TOOL -> {
                 MonotonicRouteSafetyService.CandidateScore winner = decision.nativeWinner().orElseThrow();
+                if (DeterministicToolNegativeFallbackPolicy.shouldPreferRetrievalOverTool(
+                        toolResult,
+                        retrievalOutcome.result(),
+                        retrievalOutcome.trace().abstentionTriggered())) {
+                    telemetry.toolNegativeFallbackApplied(true)
+                            .selectedCandidateSource("RETRIEVAL")
+                            .monotonicRegressionPrevented(true);
+                    appendMonotonicSafetyStage(clarifyAfterQu, telemetry);
+                    yield finalizeIntegratedRetrievalOutcome(retrievalOutcome, telemetry, true);
+                }
                 telemetry.selectedCandidateSource(winner.source())
                         .routeConfidence(winner.validation().confidence())
                         .constraintCoverageStatus(winner.validation().constraintCoverageStatus());
@@ -2290,10 +2428,28 @@ public class RagExecutionOrchestrator {
         if (applyFallbackTrace
                 && (telemetry.parentFallbackUsed()
                         || telemetry.functionCandidateRejected()
-                        || telemetry.toolCandidateRejected())) {
+                        || telemetry.toolCandidateRejected()
+                        || telemetry.toolNegativeFallbackApplied())) {
             trace =
                     trace.withIntegratedMonotonicFallback(
                             true, AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE.name());
+        }
+        if (telemetry.toolNegativeFallbackApplied()) {
+            ExecutionStageTrace finalSourceStage =
+                    new ExecutionStageTrace(
+                            "final_answer_source",
+                            0L,
+                            ExecutionStageOutcome.SUCCESS,
+                            "finalAnswerSource="
+                                    + DeterministicToolNegativeFallbackPolicy.FINAL_ANSWER_SOURCE
+                                    + " toolResultUsedAsFinal=false");
+            List<ExecutionStageTrace> withoutPriorFinalSource =
+                    trace.stages() == null
+                            ? List.of()
+                            : trace.stages().stream()
+                                    .filter(s -> s != null && !"final_answer_source".equals(s.stageName()))
+                                    .toList();
+            trace = trace.replacingStages(withoutPriorFinalSource).withAppendedStages(finalSourceStage);
         }
         ExecutionStageTrace monotonicStage =
                 new ExecutionStageTrace(

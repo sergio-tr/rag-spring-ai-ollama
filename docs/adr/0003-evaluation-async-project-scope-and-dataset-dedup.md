@@ -1,4 +1,4 @@
-# ADR 0003 — Project scope for evaluation/async rows and dataset deduplication
+# ADR 0003 - Project scope for evaluation/async rows and dataset deduplication
 
 ## Context
 
@@ -12,7 +12,7 @@ Product and observability benefit from optional **project** traceability without
 ## Decision
 
 1. **Nullable FK `project_id` → `projects(id)`** on **`evaluation_run`** and **`async_task`**, `ON DELETE SET NULL`. Indexes on `project_id` for filtered queries. Existing rows remain valid with `NULL` (global/user-scoped jobs).
-2. **Dataset deduplication policy (application-level):** treat rows as distinct per upload; **logical** deduplication for reuse is **`(owner_id, sha256)`** when `sha256` is present — no mandatory unique constraint in the database in the minimum scope (allows deliberate duplicates and backfills).
+2. **Dataset deduplication policy (application-level):** treat rows as distinct per upload; **logical** deduplication for reuse is **`(owner_id, sha256)`** when `sha256` is present - no mandatory unique constraint in the database in the minimum scope (allows deliberate duplicates and backfills).
 3. **Lab async API:** optional query parameter `projectId` on async Lab endpoints; when present and owned by the user, persist `async_task.project_id`.
 
 ## Consequences
@@ -23,5 +23,5 @@ Product and observability benefit from optional **project** traceability without
 
 ## Related
 
-- [DATA_MODEL.md — Section 10 (`evaluation_run` vs `async_task`)](../architecture/DATA_MODEL.md#dm-s10)
-- [ADR 0002 — data isolation model](0002-multitenancy-assumption.md)
+- [DATA_MODEL.md - Section 10 (`evaluation_run` vs `async_task`)](../architecture/DATA_MODEL.md#dm-s10)
+- [ADR 0002 - data isolation model](0002-multitenancy-assumption.md)

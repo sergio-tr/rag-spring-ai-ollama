@@ -87,7 +87,7 @@ class LabCampaignBenchmarkExecutorTest {
         when(labPresetAxisSupport.resolvePresetCode(p0)).thenReturn("P0");
         when(labPresetAxisSupport.resolvePresetCode(p1)).thenReturn("P1");
         when(labPresetAxisSupport.resolvePresetLabel(any())).thenReturn("label");
-        when(labPresetAxisSupport.comparisonLabel(any())).thenReturn("P0 — label");
+        when(labPresetAxisSupport.comparisonLabel(any())).thenReturn("P0 - label");
         when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(p0Id)).thenReturn(repeatItems(60));
         when(evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(p1Id)).thenReturn(repeatItems(60));
 

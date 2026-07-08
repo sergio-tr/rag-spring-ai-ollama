@@ -1,5 +1,68 @@
 {
-  "version": 1,
-  "description": "Placeholder baseline for regression harness; replace with captured output from capture_baseline.py",
-  "classifications": {}
+  "generatedAt": "2026-07-02T18:50:46.821672+00:00",
+  "classifierBaseUrl": "http://localhost:8000",
+  "modelId": "default",
+  "questionsCount": 15,
+  "classifications": {
+    "¿Cuántas actas hay?": {
+      "queryType": "COUNT_DOCUMENTS",
+      "status": 200
+    },
+    "¿En qué secciones se menciona la palabra \"universidad\"?": {
+      "queryType": "BOOLEAN_QUERY",
+      "status": 200
+    },
+    "¿Qué actas tratan el tema de la \"luz\"?": {
+      "queryType": "COUNT_DOCUMENTS",
+      "status": 200
+    },
+    "¿Cuántas actas mencionan la palabra \"reglamento\" y cuáles son?": {
+      "queryType": "COUNT_DOCUMENTS",
+      "status": 200
+    },
+    "Extrae las entidades más mencionadas en las actas.": {
+      "queryType": "COMPARE",
+      "status": 200
+    },
+    "¿Hay actas que contengan la palabra \"examen\"?": {
+      "queryType": "BOOLEAN_QUERY",
+      "status": 200
+    },
+    "¿Cómo se explica el proceso en las actas más recientes?": {
+      "queryType": "SUMMARIZE_TOPIC",
+      "status": 200
+    },
+    "¿Qué decisiones se tomaron en las actas sobre \"finanzas\"?": {
+      "queryType": "DECISION_EXTRACTION",
+      "status": 200
+    },
+    "¿Cuánto duró la reunión sobre \"innovación\"?": {
+      "queryType": "GET_DURATION",
+      "status": 200
+    },
+    "¿Cuál es el campo principal de una acta que hable de \"titulaciones\"?": {
+      "queryType": "SUMMARIZE_MEETING",
+      "status": 200
+    },
+    "Resume el tema principal sobre \"derechos\".": {
+      "queryType": "SUMMARIZE_MEETING",
+      "status": 200
+    },
+    "Resume la reunión celebrada el \"1 de diciembre\".": {
+      "queryType": "GET_FIELD",
+      "status": 200
+    },
+    "¿Las actas mencionan \"becas\"?": {
+      "queryType": "COUNT_DOCUMENTS",
+      "status": 200
+    },
+    "Filtra y lista actas que mencionan \"docencia\" y sus fechas.": {
+      "queryType": "FILTER_AND_LIST",
+      "status": 200
+    },
+    "Compara las actas sobre \"transparencia\" y \"acceso\".": {
+      "queryType": "COMPARE",
+      "status": 200
+    }
+  }
 }

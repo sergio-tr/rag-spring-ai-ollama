@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.query;
 
+import com.uniovi.rag.application.service.runtime.language.QueryLanguagePolicy;
 import com.uniovi.rag.domain.model.QueryType;
 
 import java.util.Locale;
@@ -38,8 +39,15 @@ public final class ClassifierOverrides {
             return classified;
         }
         String q = query.toLowerCase(Locale.ROOT);
+        boolean englishQuery = QueryLanguagePolicy.looksEnglish(query);
         boolean actaContext =
-                q.contains("acta") || q.contains("minuta") || q.contains("reunión") || q.contains("reunion");
+                q.contains("acta")
+                        || q.contains("minuta")
+                        || q.contains("reunión")
+                        || q.contains("reunion")
+                        || q.contains("meeting")
+                        || q.contains("minutes")
+                        || q.contains("minute");
         boolean dated = hasDated(q);
 
         boolean countCue =
@@ -48,13 +56,53 @@ public final class ClassifierOverrides {
                         || q.contains("en cuántas")
                         || q.contains("en cuantas")
                         || q.contains("cuántos")
-                        || q.contains("cuantos");
+                        || q.contains("cuantos")
+                        || q.contains("how many");
+
+        QueryType englishOverride = englishQuery ? applyEnglishRules(q, countCue, actaContext, dated) : null;
+        if (englishOverride != null) {
+            return englishOverride;
+        }
+        if (englishQuery) {
+            return classified;
+        }
 
         if (q.contains("en cuántas actas aparece")
                 || q.contains("en cuantas actas aparece")
                 || q.contains("en cuántas actas particip")
                 || q.contains("en cuantas actas particip")) {
             return QueryType.COUNT_DOCUMENTS;
+        }
+
+        if ((q.contains("en cuántas reuniones")
+                        || q.contains("en cuantas reuniones")
+                        || q.contains("dime en cuántas")
+                        || q.contains("dime en cuantas"))
+                && (q.contains("videovigilancia")
+                        || q.contains("cámaras")
+                        || q.contains("camaras")
+                        || q.contains("seguridad"))) {
+            return QueryType.COUNT_DOCUMENTS;
+        }
+
+        if (dated
+                && ((q.contains("quiénes") || q.contains("quienes"))
+                        && (q.contains("estuvieron presentes")
+                                || q.contains("estuvieron presente")
+                                || q.contains("presentes")))) {
+            return QueryType.GET_FIELD;
+        }
+
+        if (dated
+                && (q.contains("quién fue") || q.contains("quien fue") || q.contains("y quién") || q.contains("y quien"))
+                && (q.contains("secretari") || q.contains("presidente") || q.contains("presidenta"))) {
+            return QueryType.GET_FIELD;
+        }
+
+        if (q.contains("hora")
+                && (q.contains("empez") || q.contains("comenz") || q.contains("termin") || q.contains("finaliz"))
+                && (actaContext || dated || q.contains("esa acta"))) {
+            return QueryType.GET_FIELD;
         }
 
         if (q.contains("qué secciones comparten")
@@ -90,6 +138,20 @@ public final class ClassifierOverrides {
             return QueryType.FILTER_AND_LIST;
         }
 
+        if ((q.contains("fechas") || q.contains("dates"))
+                && (q.contains("terminaron") || q.contains("termino") || q.contains("finaliz"))
+                && (q.contains("tarde")
+                        || q.contains("más tarde")
+                        || q.contains("mas tarde")
+                        || q.contains("later"))) {
+            return QueryType.FILTER_AND_LIST;
+        }
+
+        if (q.contains("dime las actas")
+                && (q.contains("mencionan") || q.contains("comentan") || q.contains("comment"))) {
+            return QueryType.FILTER_AND_LIST;
+        }
+
         if (q.contains("qué reuniones celebradas") || q.contains("que reuniones celebradas")) {
             return QueryType.FILTER_AND_LIST;
         }
@@ -117,6 +179,16 @@ public final class ClassifierOverrides {
         }
 
         if (dated
+                && (q.contains("cuántos asistentes")
+                        || q.contains("cuantos asistentes")
+                        || q.contains("cuántas personas asistieron")
+                        || q.contains("cuantas personas asistieron")
+                        || q.contains("cuántos participantes")
+                        || q.contains("cuantos participantes"))) {
+            return QueryType.GET_FIELD;
+        }
+
+        if (dated
                 && (q.contains("cuál fue la duración")
                         || q.contains("cual fue la duracion")
                         || q.contains("duración de la reunión")
@@ -133,16 +205,22 @@ public final class ClassifierOverrides {
             return QueryType.BOOLEAN_QUERY;
         }
 
-        if (dated && (q.contains("duración")
-                || q.contains("duracion")
-                || q.contains("duration")
-                || q.contains("cuánto dur")
-                || q.contains("cuanto dur"))) {
+        if (dated
+                && (q.contains("duración")
+                        || q.contains("duracion")
+                        || q.contains("duration")
+                        || q.contains("cuánto dur")
+                        || q.contains("cuanto dur"))
+                && !(q.contains("asistentes") || q.contains("participantes"))) {
             return QueryType.GET_DURATION;
         }
 
         if ((q.contains("resume") || q.contains("resum"))
                 && (dated || q.matches(".*\\b(año|ano)\\s+(del\\s+)?\\d{4}\\b.*"))) {
+            return QueryType.SUMMARIZE_MEETING;
+        }
+
+        if (ActaFieldAnchorHeuristics.isDatedSummaryRequest(q)) {
             return QueryType.SUMMARIZE_MEETING;
         }
 
@@ -170,7 +248,15 @@ public final class ClassifierOverrides {
             return QueryType.GET_FIELD;
         }
 
-        if (dated && (q.contains("orden del día") || q.contains("orden del dia") || q.contains("puntos del orden"))) {
+        if (dated && (q.contains("orden del día") || q.contains("orden del dia")
+                || q.contains("puntos del orden") || q.contains("puntos del día")
+                || q.contains("puntos del dia"))) {
+            return QueryType.GET_FIELD;
+        }
+
+        if (!dated
+                && (q.contains("puntos del día") || q.contains("puntos del dia")
+                        || q.contains("orden del día") || q.contains("orden del dia"))) {
             return QueryType.GET_FIELD;
         }
 
@@ -194,6 +280,27 @@ public final class ClassifierOverrides {
             return QueryType.FILTER_AND_LIST;
         }
 
+        if (ActaFieldAnchorHeuristics.hasMonthNameInText(q)
+                && q.contains("temas")
+                && q.contains("asistentes")) {
+            return QueryType.FILTER_AND_LIST;
+        }
+
+        if ((q.contains("hubo más") || q.contains("hubo mas") || q.contains("compara") || q.contains("compar"))
+                && (q.contains("asistent") || q.contains("reunion") || q.contains("reunión") || q.contains("mes"))) {
+            return QueryType.COMPARE;
+        }
+
+        if ((q.contains("compara") || q.contains("compar"))
+                && q.contains("propuestas")
+                && (q.contains("febrero") || q.contains("agosto"))) {
+            return QueryType.COMPARE;
+        }
+
+        if (q.contains("qué mes tuvo más") || q.contains("que mes tuvo mas")) {
+            return QueryType.COMPARE;
+        }
+
         if (q.contains("qué reuniones incluyeron") || q.contains("que reuniones incluyeron")) {
             return QueryType.FILTER_AND_LIST;
         }
@@ -204,6 +311,9 @@ public final class ClassifierOverrides {
 
         if (actaContext && dated && !countCue) {
             if (q.contains("presidente") || q.contains("presidió") || q.contains("presidio")) {
+                return QueryType.GET_FIELD;
+            }
+            if (q.contains("secretari")) {
                 return QueryType.GET_FIELD;
             }
             if (q.contains("participantes")
@@ -275,5 +385,57 @@ public final class ClassifierOverrides {
                 || q.contains("en relación a")
                 || q.contains("en relacion a")
                 || q.contains("respecto a");
+    }
+
+    private static QueryType applyEnglishRules(
+            String q, boolean countCue, boolean actaContext, boolean dated) {
+        if ((q.contains("what do you know about") || q.contains("tell me about"))
+                && !countCue) {
+            return QueryType.FIND_PARAGRAPH;
+        }
+
+        if ((q.contains("dates of the minutes") || q.contains("dates of the minute"))
+                && (q.contains("elevator") || q.contains("lift"))) {
+            return QueryType.FILTER_AND_LIST;
+        }
+
+        if (countCue
+                && actaContext
+                && (q.contains("budget") || q.contains("budgets") || q.contains("elevator") || q.contains("lift"))) {
+            return QueryType.COUNT_DOCUMENTS;
+        }
+
+        if (dated
+                && actaContext
+                && (q.contains("duration") || q.contains("how long") || q.contains("how much time"))) {
+            return QueryType.GET_DURATION;
+        }
+
+        if (dated
+                && actaContext
+                && (q.contains("president") || q.contains("secretary") || q.contains("attendees"))) {
+            return QueryType.GET_FIELD;
+        }
+
+        if ((q.contains("confirm") || q.contains("verify"))
+                && actaContext
+                && (q.contains("appear") || q.contains("mention"))) {
+            return QueryType.BOOLEAN_QUERY;
+        }
+
+        if ((q.contains("was ") || q.contains("were "))
+                && (q.contains("discussed") || q.contains("mentioned"))
+                && (actaContext || q.contains("elevator") || q.contains("lift") || q.contains("budget"))) {
+            return QueryType.BOOLEAN_QUERY;
+        }
+
+        if (q.contains("who was the president")
+                || q.contains("who was president")
+                || q.contains("who was the secretary")
+                || q.contains("who was secretary")) {
+            return QueryType.GET_FIELD;
+        }
+
+        return null;
     }
 }

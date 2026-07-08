@@ -75,6 +75,12 @@ public class OpenAiCompatibleLlmException extends RuntimeException {
                 OpenAiCompatibleLlmFailureKind.INVALID_MODEL, "OpenAI-compatible model rejected: " + detail);
     }
 
+    public static OpenAiCompatibleLlmException unsupportedParams(String detail) {
+        return new OpenAiCompatibleLlmException(
+                OpenAiCompatibleLlmFailureKind.UNSUPPORTED_PARAMS,
+                "OpenAI-compatible chat rejected unsupported parameters: " + detail);
+    }
+
     public static OpenAiCompatibleLlmException httpError(int statusCode, String bodySnippet) {
         return new OpenAiCompatibleLlmException(
                 OpenAiCompatibleLlmFailureKind.HTTP_ERROR,

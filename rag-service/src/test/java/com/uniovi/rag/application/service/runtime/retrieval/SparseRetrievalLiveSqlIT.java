@@ -1,34 +1,47 @@
 package com.uniovi.rag.application.service.runtime.retrieval;
 
+import com.uniovi.rag.testsupport.PostgresIntegrationTestSupport;
+import com.uniovi.rag.testsupport.PostgresIntegrationTestSupport.PostgresBinding;
+import com.uniovi.rag.testsupport.TestEnvironment;
 import java.util.List;
 import java.util.UUID;
-import javax.sql.DataSource;
-import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+@EnabledIf(
+        value = "com.uniovi.rag.testsupport.TestEnvironment#isJdbcIntegrationTestAvailable",
+        disabledReason = "Start Postgres or set INTEGRATION_JDBC_URL")
 class SparseRetrievalLiveSqlIT {
 
-  @Test
-  void executeStageSql_runsAgainstLivePostgresWithoutSyntaxError() {
-    String url = System.getenv("INTEGRATION_JDBC_URL");
-    if (url == null || url.isBlank()) {
-      Assumptions.abort("INTEGRATION_JDBC_URL not set");
+    private static PostgresBinding postgresBinding;
+
+    @BeforeAll
+    static void bindDatabase() {
+        postgresBinding = PostgresIntegrationTestSupport.startJdbcIntegrationDatabase();
     }
-    String user = System.getenv().getOrDefault("SPRING_DATASOURCE_USERNAME", "postgres");
-    String password = System.getenv().getOrDefault("SPRING_DATASOURCE_PASSWORD", "postgres");
-    DataSource ds = new DriverManagerDataSource(url, user, password);
-    NamedParameterJdbcTemplate jdbc = new NamedParameterJdbcTemplate(ds);
 
-    UUID projectId = UUID.fromString("27027d52-6862-443f-bad3-b33c1de2f31a");
-    UUID snapshotId = UUID.fromString("2070abbf-db48-474f-a467-190863710215");
+    @AfterAll
+    static void releaseDatabase() {
+        if (postgresBinding != null) {
+            postgresBinding.cleanup().run();
+        }
+    }
 
-    String sql =
-        """
+    @Test
+    void executeStageSql_runsAgainstLivePostgresWithoutSyntaxError() {
+        NamedParameterJdbcTemplate jdbc = new NamedParameterJdbcTemplate(postgresBinding.dataSource());
+
+        UUID projectId = UUID.fromString("27027d52-6862-443f-bad3-b33c1de2f31a");
+        UUID snapshotId = UUID.fromString("2070abbf-db48-474f-a467-190863710215");
+
+        String sql =
+                """
                 SELECT id, content, CAST(metadata AS TEXT) AS metadata_json, chunk_index,
                   ts_rank_cd(content_tsv, websearch_to_tsquery('simple', :query)) AS rank
                 FROM vector_store
@@ -39,13 +52,13 @@ class SparseRetrievalLiveSqlIT {
                 ORDER BY rank DESC NULLS LAST LIMIT :limit
                 """;
 
-    MapSqlParameterSource p =
-        new MapSqlParameterSource()
-            .addValue("projectId", projectId)
-            .addValue("snapshotIds", List.of(snapshotId.toString()))
-            .addValue("query", "Resume los temas tratados en el acta del 25/02/2026")
-            .addValue("limit", 5);
+        MapSqlParameterSource p =
+                new MapSqlParameterSource()
+                        .addValue("projectId", projectId)
+                        .addValue("snapshotIds", List.of(snapshotId.toString()))
+                        .addValue("query", "Resume los temas tratados en el acta del 25/02/2026")
+                        .addValue("limit", 5);
 
-    assertThatCode(() -> jdbc.query(sql, p, (rs, rowNum) -> rs.getString("id"))).doesNotThrowAnyException();
-  }
+        assertThatCode(() -> jdbc.query(sql, p, (rs, rowNum) -> rs.getString("id"))).doesNotThrowAnyException();
+    }
 }

@@ -4,15 +4,20 @@
  * Set E2E_SKIP_STACK_PREFLIGHT=1 to skip (offline UI-only runs).
  *
  * Demo stack (reverse-proxy): set PLAYWRIGHT_BASE_URL=https://127.0.0.1:8444 (or rely on defaults).
- * Health probes use {origin}/actuator/health — not /api/v5/actuator/health (that path requires JWT).
+ * Health probes use {origin}/actuator/health - not /api/v5/actuator/health (that path requires JWT).
  */
-import { actuatorHealthUrl, resolveE2eBases } from "./e2e-bases.mjs";
+import { actuatorHealthUrl, productBasePath, resolveE2eBases } from "./e2e-bases.mjs";
 
-const MAX_WALL_MS = Number.parseInt(process.env.E2E_STACK_PREFLIGHT_MAX_MS ?? "90000", 10);
-const PER_REQUEST_MS = Number.parseInt(process.env.E2E_STACK_PREFLIGHT_REQUEST_MS ?? "12000", 10);
-const PRODUCT_PREFIX = (process.env.NEXT_PUBLIC_RAG_API_PREFIX ?? "/api/v5").replace(/\/$/, "");
+/** Exit code when the stack is offline or missing seed fixtures - Playwright must not start. */
+export const E2E_STACK_NOT_READY_EXIT_CODE = 2;
+
+const MAX_WALL_MS = Number.parseInt(process.env.E2E_STACK_PREFLIGHT_MAX_MS ?? "120000", 10);
+const PER_REQUEST_MS = Number.parseInt(process.env.E2E_STACK_PREFLIGHT_REQUEST_MS ?? "20000", 10);
+const PRODUCT_PREFIX = productBasePath();
 const SEED_EMAIL = process.env.E2E_SEED_EMAIL ?? process.env.INTEGRATION_LOGIN_EMAIL ?? "dev@local.test";
 const SEED_PASSWORD = process.env.E2E_SEED_PASSWORD ?? process.env.INTEGRATION_LOGIN_PASSWORD ?? "dev";
+const SEED_PROJECT_ID =
+  process.env.E2E_SEED_PROJECT_ID ?? "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22";
 
 if (process.env.E2E_SKIP_STACK_PREFLIGHT === "1") {
   console.log("e2e-stack-preflight: skipped (E2E_SKIP_STACK_PREFLIGHT=1)");
@@ -39,10 +44,23 @@ async function fetchWithTimeout(url, label, init = {}) {
     return res;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(`${label}: ${msg} (url=${url})`);
+    const refused =
+      /ECONNREFUSED|fetch failed|ENOTFOUND|ECONNRESET|aborted|timeout/i.test(msg) ||
+      (e instanceof Error && e.name === "AbortError");
+    const prefix = refused ? "E2E_STACK_NOT_READY" : "E2E_STACK_PREFLIGHT_FAIL";
+    throw new Error(`${prefix}: ${label}: ${msg} (url=${url})`);
   } finally {
     clearTimeout(timer);
   }
+}
+
+function connectivityError(label, err, url) {
+  const msg = err instanceof Error ? err.message : String(err);
+  const refused =
+    /ECONNREFUSED|fetch failed|ENOTFOUND|ECONNRESET|aborted|timeout/i.test(msg) ||
+    (err instanceof Error && err.name === "AbortError");
+  const prefix = refused ? "E2E_STACK_NOT_READY" : "E2E_STACK_PREFLIGHT_FAIL";
+  return new Error(`${prefix}: ${label}: ${msg} (url=${url})`);
 }
 
 async function main() {
@@ -54,7 +72,7 @@ async function main() {
   const readiness = await fetch(readinessUrl, {
     signal: AbortSignal.timeout(Math.min(PER_REQUEST_MS, MAX_WALL_MS)),
   }).catch((e) => {
-    throw new Error(`backend readiness: ${e instanceof Error ? e.message : e} (url=${readinessUrl})`);
+    throw connectivityError("backend readiness", e, readinessUrl);
   });
   if (readiness.status !== 200 && readiness.status !== 503) {
     const body = await readiness.text().catch(() => "");
@@ -68,7 +86,7 @@ async function main() {
     body: JSON.stringify({ email: SEED_EMAIL, password: SEED_PASSWORD }),
     signal: AbortSignal.timeout(Math.min(PER_REQUEST_MS, MAX_WALL_MS)),
   }).catch((e) => {
-    throw new Error(`seed login: ${e instanceof Error ? e.message : e} (url=${loginUrl})`);
+    throw connectivityError("seed login", e, loginUrl);
   });
   if (loginRes.status !== 200) {
     const body = await loginRes.text().catch(() => "");
@@ -84,6 +102,45 @@ async function main() {
   if (!accessToken) {
     throw new Error("seed login: missing accessToken in response");
   }
+
+  const authHeaders = { Authorization: `Bearer ${accessToken}`, Accept: "application/json" };
+
+  const modelsUrl = `${apiBase}${PRODUCT_PREFIX}/me/llm/selectable-models?capability=CHAT`;
+  const modelsRes = await fetch(modelsUrl, {
+    headers: authHeaders,
+    signal: AbortSignal.timeout(Math.min(PER_REQUEST_MS, MAX_WALL_MS)),
+  }).catch((e) => {
+    throw new Error(`selectable models: ${e instanceof Error ? e.message : e} (url=${modelsUrl})`);
+  });
+  if (modelsRes.status !== 200) {
+    const body = await modelsRes.text().catch(() => "");
+    throw new Error(`selectable models: HTTP ${modelsRes.status} ${body.slice(0, 200)}`);
+  }
+  const modelsJson = await modelsRes.json().catch(() => ({}));
+  const selectable = (modelsJson.models ?? []).filter(
+    (m) => m.selectable && String(m.modelName ?? "").trim(),
+  );
+  if (selectable.length < 1) {
+    throw new Error("selectable models: no selectable CHAT models for seed user");
+  }
+
+  const projectsUrl = `${apiBase}${PRODUCT_PREFIX}/projects?page=0&size=20`;
+  const projectsRes = await fetch(projectsUrl, {
+    headers: authHeaders,
+    signal: AbortSignal.timeout(Math.min(PER_REQUEST_MS, MAX_WALL_MS)),
+  }).catch((e) => {
+    throw new Error(`seed projects: ${e instanceof Error ? e.message : e} (url=${projectsUrl})`);
+  });
+  if (projectsRes.status !== 200) {
+    const body = await projectsRes.text().catch(() => "");
+    throw new Error(`seed projects: HTTP ${projectsRes.status} ${body.slice(0, 200)}`);
+  }
+  const projectsJson = await projectsRes.json().catch(() => ({}));
+  const projectItems = projectsJson.items ?? [];
+  if (!projectItems.some((p) => p.id === SEED_PROJECT_ID)) {
+    throw new Error(`seed project fixture missing (expected id=${SEED_PROJECT_ID})`);
+  }
+
   const activeUrl = `${apiBase}${PRODUCT_PREFIX}/lab/jobs/active`;
   const activeRes = await fetch(activeUrl, {
     headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
@@ -97,16 +154,22 @@ async function main() {
   }
 
   console.log(
-    `e2e-stack-preflight: OK public=${publicBase} health=${healthBase} api=${apiBase} web=${webHealthBase} seed=${SEED_EMAIL} labActiveJobs=200 (${Date.now() - started}ms)`,
+    `e2e-stack-preflight: OK public=${publicBase} health=${healthBase} api=${apiBase} web=${webHealthBase} seed=${SEED_EMAIL} project=${SEED_PROJECT_ID} selectableModels=${selectable.length} labActiveJobs=200 (${Date.now() - started}ms)`,
   );
 }
 
+function preflightExitCode(message) {
+  return /^E2E_STACK_NOT_READY:/.test(message) ? E2E_STACK_NOT_READY_EXIT_CODE : 1;
+}
+
 main().catch((err) => {
-  console.error(`e2e-stack-preflight: FAIL ${err instanceof Error ? err.message : err}`);
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(`e2e-stack-preflight: FAIL ${message}`);
   console.error(
-    "Hint: for Docker demo use PLAYWRIGHT_BASE_URL=https://127.0.0.1:8444 (actuator at /actuator/health on origin, not /api/v5/actuator). " +
-      "For CI/direct backend use API_BASE_URL=http://127.0.0.1:9000 and E2E_BACKEND_HEALTH_URL=http://127.0.0.1:9000. " +
+    "Hint: for Docker demo use PLAYWRIGHT_BASE_URL=https://127.0.0.1:8444 and E2E_PRODUCT_URL=https://127.0.0.1:8444 " +
+      "(actuator at /actuator/health on origin, not /api/v5/actuator). " +
+      "For CI/direct backend use E2E_PRODUCT_URL=http://127.0.0.1:9000 and E2E_BACKEND_HEALTH_URL=http://127.0.0.1:9000. " +
       "Offline UI-only: E2E_SKIP_STACK_PREFLIGHT=1.",
   );
-  process.exit(1);
+  process.exit(preflightExitCode(message));
 });

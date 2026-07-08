@@ -27,7 +27,21 @@ describe("resolveEmbeddingCampaignIndexSnapshotIds", () => {
     expect(out.unresolvedModels).toEqual([]);
   });
 
-  it("marks models unresolved when active snapshot uses a different embedding", async () => {
+  it("matches hf.co catalog ids with :latest suffix", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({
+      id: "snap-hf",
+      indexProfile: { embeddingModelId: "hf.co/mixedbread-ai/mxbai-embed-large-v1:latest" },
+    });
+
+    const out = await resolveEmbeddingCampaignIndexSnapshotIds("proj-1", [
+      "hf.co/mixedbread-ai/mxbai-embed-large-v1:latest",
+    ]);
+
+    expect(out.snapshotIds).toEqual(["snap-hf"]);
+    expect(out.unresolvedModels).toEqual([]);
+  });
+
+  it("does not reuse active snapshot for a different embedding model", async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       id: "snap-a",
       indexProfile: { embeddingModelId: "nomic-embed-text" },

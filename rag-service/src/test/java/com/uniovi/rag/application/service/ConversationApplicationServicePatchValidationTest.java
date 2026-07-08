@@ -23,6 +23,7 @@ import com.uniovi.rag.interfaces.rest.dto.PatchConversationRequest;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidationIssueDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeIndexCompatibilityDto;
+import com.uniovi.rag.application.service.chat.IndexAwareChatPresetDefaultService;
 import com.uniovi.rag.application.service.config.ChatPresetDefaults;
 import com.uniovi.rag.application.service.preset.PresetService;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
@@ -64,6 +65,7 @@ class ConversationApplicationServicePatchValidationTest {
                         knowledgeDocumentRepository,
                         presetService,
                         chatPresetDefaults,
+                        mock(IndexAwareChatPresetDefaultService.class),
                         experimentalPresetCatalogService,
                         runtimeConfigValidationService);
     }
@@ -99,7 +101,6 @@ class ConversationApplicationServicePatchValidationTest {
                                 new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false, null, null, true, "UNKNOWN"),
                                 false))
                 .thenReturn(
-                        // Effective config validate (after override) -> unsupported
                         new RuntimeConfigValidateResponse(
                                 false,
                                 false,
@@ -122,7 +123,7 @@ class ConversationApplicationServicePatchValidationTest {
                                                 null,
                                                 null,
                                                 null,
-                                                Map.of("useRetrieval", false),
+                                                Map.of("topK", -1),
                                                 null,
                                                 null,
                                                 null,

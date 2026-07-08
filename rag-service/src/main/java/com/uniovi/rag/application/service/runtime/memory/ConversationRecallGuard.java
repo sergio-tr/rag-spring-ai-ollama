@@ -43,11 +43,11 @@ public class ConversationRecallGuard {
 
     /**
      * Blocks corpus retrieval for acta-scoped follow-ups when this conversation has no local date/meeting anchor
-     * (FD-ISO-01). Applies when clarification did not already ask — including presets with clarification disabled.
+     * (FD-ISO-01). Applies when clarification did not already ask - including presets with clarification disabled.
      */
     public boolean shouldShortCircuitAmbiguousActaQuery(ExecutionContext ctx) {
         Objects.requireNonNull(ctx, "ctx");
-        String query = ctx.userQuery();
+        String query = effectiveQueryForActaGuard(ctx);
         if (query == null || query.isBlank()) {
             return false;
         }
@@ -132,7 +132,9 @@ public class ConversationRecallGuard {
         if (ActaFieldAnchorHeuristics.isCompoundMonthTopicAttendeeFilter(q)) {
             return false;
         }
-        if (ActaFieldAnchorHeuristics.hasExplicitDateInText(q) || isCorpusWideAggregate(q)) {
+        if (ActaFieldAnchorHeuristics.hasExplicitDateInText(q)
+                || ActaFieldAnchorHeuristics.hasExplicitActaDocumentReference(q)
+                || ActaFieldAnchorHeuristics.isCorpusWideAggregate(q)) {
             return false;
         }
         boolean participants =
@@ -158,13 +160,19 @@ public class ConversationRecallGuard {
         boolean actaMeetingField =
                 participants
                         || q.contains("presidente")
+                        || q.contains("presidenta")
                         || q.contains("secretari")
                         || q.contains("duración")
                         || q.contains("duracion")
+                        || q.contains("lugar")
+                        || q.contains("temas")
+                        || q.contains("acuerdos")
+                        || q.contains("acuerdo")
                         || q.contains("orden del día")
                         || q.contains("orden del dia")
                         || demonstrativeFollowUp
-                        || (q.contains("los participantes") && !hasExplicitDateInText(q));
+                        || (q.contains("los participantes") && !hasExplicitDateInText(q))
+                        || ConversationFollowUpResolver.isActaStructuredFieldFollowUp(q);
         boolean asksPresident =
                 q.contains("presidente") || q.contains("presidió") || q.contains("presidio");
         boolean asksWho = q.contains("quién") || q.contains("quien");
@@ -174,38 +182,33 @@ public class ConversationRecallGuard {
         return countParticipants
                 || pronounFollowUp
                 || demonstrativeFollowUp
+                || ConversationFollowUpResolver.requiresUniqueAnchorDate(q)
                 || (actaMeetingField && (participants || q.contains("presidente")));
     }
 
     private boolean hasLocalConversationActaAnchor(ExecutionContext ctx) {
-        if (hasExplicitDateInText(ctx.userQuery())) {
+        String effective = effectiveQueryForActaGuard(ctx);
+        if (hasExplicitDateInText(effective)
+                || ActaFieldAnchorHeuristics.hasExplicitActaDocumentReference(effective)) {
             return true;
-        }
-        ConversationMemoryOutcome outcome = ctx.memoryOutcome();
-        if (outcome == ConversationMemoryOutcome.MEMORY_APPLIED
-                || outcome == ConversationMemoryOutcome.CONDENSE_FAILED_FALLBACK) {
-            String effective = ctx.effectivePlanningInputText();
-            if (effective != null && hasExplicitDateInText(effective)) {
-                return true;
-            }
         }
         List<ConversationMemoryTurn> history = historyLoader.loadEligibleHistory(ctx);
-        if (history.size() >= 2 && ConversationFollowUpResolver.findMostRecentDate(history).isPresent()) {
-            return true;
+        if (history.isEmpty()) {
+            return false;
         }
-        return false;
+        String lower = effective != null ? effective.toLowerCase(Locale.ROOT) : "";
+        if (ConversationFollowUpResolver.requiresUniqueAnchorDate(lower)) {
+            return ConversationFollowUpResolver.findUniqueAnchorDate(history).isPresent();
+        }
+        return ConversationFollowUpResolver.findMostRecentDate(history).isPresent();
     }
 
-    private static boolean isCorpusWideAggregate(String q) {
-        return q.contains("todas las actas")
-                || q.contains("cada acta")
-                || q.contains("cuántas actas")
-                || q.contains("cuantas actas")
-                || q.contains("hay actas")
-                || q.contains("todas las reuniones")
-                || q.contains("cuántas reuniones")
-                || q.contains("cuantas reuniones")
-                || ActaFieldAnchorHeuristics.isCompoundMonthTopicAttendeeFilter(q);
+    static String effectiveQueryForActaGuard(ExecutionContext ctx) {
+        String effective = ctx.effectivePlanningInputText();
+        if (effective != null && !effective.isBlank()) {
+            return effective;
+        }
+        return ctx.userQuery();
     }
 
     private static boolean hasExplicitDateInText(String text) {

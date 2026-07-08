@@ -1,7 +1,10 @@
 package com.uniovi.rag.application.service.runtime;
 
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMappings;
+import com.uniovi.rag.application.service.runtime.routing.safety.MonotonicSafetyTelemetrySupport;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolNegativeFallbackPolicy;
 import com.uniovi.rag.configuration.ToolDescriptor;
+import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
 import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingOutcome;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
@@ -44,7 +47,12 @@ public final class ToolExecutionTelemetryMapper {
         m.put("toolSelected", state.toolSelected());
         m.put("toolExecuted", state.toolExecuted());
         m.put("toolSucceeded", state.toolSucceeded());
-        m.put("toolResultUsedAsFinal", state.toolResultUsedAsFinal());
+        boolean toolResultUsedAsFinal = state.toolResultUsedAsFinal();
+        if (trace.routingFallbackApplied() && hasRetrievalFallbackFinalSource(trace)) {
+            toolResultUsedAsFinal = false;
+            m.put("toolNegativeFallbackApplied", true);
+        }
+        m.put("toolResultUsedAsFinal", toolResultUsedAsFinal);
         if (!state.toolFallbackReason().isBlank()) {
             m.put("toolFallbackReason", state.toolFallbackReason());
         }
@@ -70,6 +78,7 @@ public final class ToolExecutionTelemetryMapper {
         copyDetailToken(toolDetail, m, "toolFallbackReason");
         copyDetailToken(toolDetail, m, "toolInputSummary");
         copyDetailToken(toolDetail, m, "toolOutputHash");
+        enrichMonotonicSafetyTelemetry(trace, m);
         m.putAll(FunctionCallingTelemetryMapper.fromTrace(trace));
         m.putAll(AdvisorTelemetryMapper.fromTrace(trace));
         putFinalAnswerSourceFromTrace(trace, m);
@@ -79,6 +88,11 @@ public final class ToolExecutionTelemetryMapper {
 
     private static void putFinalAnswerSourceFromTrace(ExecutionTrace trace, Map<String, Object> m) {
         if (m.containsKey("finalAnswerSource")) {
+            return;
+        }
+        String fromStage = finalAnswerSourceFromStages(trace);
+        if (!fromStage.isBlank()) {
+            m.put("finalAnswerSource", fromStage);
             return;
         }
         String toolOutcome = safe(trace.deterministicToolOutcome());
@@ -91,6 +105,38 @@ public final class ToolExecutionTelemetryMapper {
                 && !trace.routingFallbackApplied()) {
             m.put("finalAnswerSource", "FUNCTION_FINAL");
         }
+    }
+
+    private static void enrichMonotonicSafetyTelemetry(ExecutionTrace trace, Map<String, Object> m) {
+        if (trace.stages() == null) {
+            return;
+        }
+        for (ExecutionStageTrace stage : trace.stages()) {
+            if (stage != null && MonotonicSafetyTelemetrySupport.STAGE_NAME.equals(stage.stageName())) {
+                MonotonicSafetyTelemetrySupport.enrichFromStageMessage(m, stage.message());
+                return;
+            }
+        }
+    }
+
+    private static boolean hasRetrievalFallbackFinalSource(ExecutionTrace trace) {
+        return DeterministicToolNegativeFallbackPolicy.FINAL_ANSWER_SOURCE.equals(finalAnswerSourceFromStages(trace));
+    }
+
+    private static String finalAnswerSourceFromStages(ExecutionTrace trace) {
+        if (trace.stages() == null) {
+            return "";
+        }
+        for (ExecutionStageTrace stage : trace.stages()) {
+            if (stage == null || !"final_answer_source".equals(stage.stageName())) {
+                continue;
+            }
+            String source = tokenValue(stage.message() != null ? stage.message() : "", "finalAnswerSource=");
+            if (!source.isBlank()) {
+                return source;
+            }
+        }
+        return "";
     }
 
     private static void parseRoutingTelemetry(String toolDetail, Map<String, Object> m) {

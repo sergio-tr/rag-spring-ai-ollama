@@ -21,7 +21,7 @@ import {
   sendChatMessage,
 } from "../support/helpers";
 
-const EVIDENCE_DIR = path.resolve(__dirname, "../../../.cursor/evidence/wave-3-current/classifier-closure");
+const EVIDENCE_DIR = path.resolve(__dirname, "../../../docs/evidence/wave-3-current/classifier-closure");
 
 const MINIMAL_CHAT_QUERY = "How many meetings mention the lift?";
 
@@ -88,7 +88,7 @@ test.describe.serial("Closure classifier train evaluate activate @closure @fulls
         test.info().annotations.push({
           type: "blocked",
           description:
-            "Ollama DOWN — skipping chat send/trace assertions (LAB train/eval/activate completed). See W3-OPS-OLLAMA-UP.",
+            "Ollama DOWN - skipping chat send/trace assertions (LAB train/eval/activate completed). See W3-OPS-OLLAMA-UP.",
         });
         return;
       }

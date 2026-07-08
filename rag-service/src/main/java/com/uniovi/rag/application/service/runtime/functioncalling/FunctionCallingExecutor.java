@@ -1,5 +1,7 @@
 package com.uniovi.rag.application.service.runtime.functioncalling;
 
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
+import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
@@ -31,27 +33,33 @@ import java.util.stream.Collectors;
 
 /**
  * Spring AI protocol + ChatClient orchestration for bounded function calling.
+ * Tool-enabled rounds require Ollama-native Spring AI tool callbacks; follow-up uses provider-aware gateway.
  */
 @Component
 public class FunctionCallingExecutor {
+
+    public static final String OPERATION_FUNCTION_CALLING = "function-calling";
 
     private final ChatClient chatClient;
     private final FunctionCallingToolRegistry toolRegistry;
     private final MeetingMinutesToolExecutionCore meetingMinutesToolExecutionCore;
     private final FunctionCallingResultMapper resultMapper;
     private final ChatGenerationModelSelector chatGenerationModelSelector;
+    private final ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
 
     public FunctionCallingExecutor(
             ChatClient chatClient,
             FunctionCallingToolRegistry toolRegistry,
             MeetingMinutesToolExecutionCore meetingMinutesToolExecutionCore,
             FunctionCallingResultMapper resultMapper,
-            ChatGenerationModelSelector chatGenerationModelSelector) {
+            ChatGenerationModelSelector chatGenerationModelSelector,
+            ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor) {
         this.chatClient = chatClient;
         this.toolRegistry = toolRegistry;
         this.meetingMinutesToolExecutionCore = meetingMinutesToolExecutionCore;
         this.resultMapper = resultMapper;
         this.chatGenerationModelSelector = chatGenerationModelSelector;
+        this.secondaryLlmExecutor = secondaryLlmExecutor;
     }
 
     @SuppressWarnings("deprecation")
@@ -59,6 +67,25 @@ public class FunctionCallingExecutor {
         List<ExecutionStageTrace> stages = new ArrayList<>();
         stages.add(FunctionCallingTelemetrySupport.nativeProposalStage(true, "", ""));
         String msgBase = "outcome=pending";
+
+        ResolvedLlmConfig config = secondaryLlmExecutor.effectiveConfig(ctx);
+        if (config.usesOpenAiCompatibleChat()) {
+            stages.add(
+                    new ExecutionStageTrace(
+                            "function_calling_model",
+                            0L,
+                            ExecutionStageOutcome.SKIPPED,
+                            msgBase + " native_fc_unsupported_for_provider=OPENAI_COMPATIBLE"));
+            stages.add(fcResultMapStage(FunctionCallingOutcome.NOT_APPLICABLE));
+            return terminalOutcome(
+                    FunctionCallingOutcome.NOT_APPLICABLE,
+                    "",
+                    Map.of(),
+                    Optional.empty(),
+                    stages,
+                    List.of("native_fc_unsupported_for_provider=OPENAI_COMPATIBLE"));
+        }
+
         try {
             String firstUser = FunctionCallingPrompts.buildFirstRoundUserMessage(plan);
             List<ToolCallback> callbacks = toolRegistry.callbacksFor(decision.exposedToolKinds());
@@ -181,34 +208,19 @@ public class FunctionCallingExecutor {
             }
 
             String followUpUser = FunctionCallingPrompts.buildFollowUpUserMessage(plan, payload);
-            var followBuilder = chatClient.prompt().system(ctx.effectiveSystemPrompt()).user(followUpUser);
-            Optional<String> followModel = chatGenerationModelSelector.effectiveChatModelId(ctx);
-            ChatResponse response2 =
-                    followModel.isPresent()
-                            ? followBuilder
-                                    .options(OllamaOptions.builder().model(followModel.get()).build())
-                                    .call()
-                                    .chatResponse()
-                            : followBuilder.call().chatResponse();
+            String finalText =
+                    secondaryLlmExecutor.complete(
+                            ctx,
+                            OPERATION_FUNCTION_CALLING,
+                            ctx.effectiveSystemPrompt(),
+                            followUpUser,
+                            null);
             stages.add(new ExecutionStageTrace(
                     "function_calling_model",
                     0L,
                     ExecutionStageOutcome.SUCCESS,
-                    msgBase + " round=follow_up"));
+                    msgBase + " round=follow_up provider=" + config.chatProvider()));
 
-            AssistantMessage followAssistant = (AssistantMessage) response2.getResult().getOutput();
-            if (followAssistant.hasToolCalls() && !followAssistant.getToolCalls().isEmpty()) {
-                stages.add(fcResultMapStage(FunctionCallingOutcome.INVALID_MODEL_OUTPUT));
-                return terminalOutcome(
-                        FunctionCallingOutcome.INVALID_MODEL_OUTPUT,
-                        "",
-                        Map.of(),
-                        Optional.empty(),
-                        stages,
-                        List.of("tool_call_in_follow_up"));
-            }
-
-            String finalText = followAssistant.getText();
             if (finalText == null) {
                 finalText = "";
             }

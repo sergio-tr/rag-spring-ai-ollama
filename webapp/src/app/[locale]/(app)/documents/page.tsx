@@ -107,12 +107,12 @@ function DocumentsPageInner() {
                   <td className="p-3">
                     <StatusBadge status={row.status} />
                   </td>
-                  <td className="p-3">{row.chunkCount ?? "—"}</td>
+                  <td className="p-3">{row.chunkCount ?? "-"}</td>
                   <td className="p-3 text-muted-foreground">
                     {new Date(row.uploadedAt).toLocaleString()}
                   </td>
                   <td className="p-3 text-muted-foreground text-xs max-w-[220px]">
-                    {row.status === "ERROR" && row.errorMessage ? row.errorMessage : "—"}
+                    {row.status === "ERROR" && row.errorMessage ? row.errorMessage : "-"}
                   </td>
                   <td className="p-3">
                     <div className="flex flex-wrap gap-1">

@@ -16,7 +16,7 @@ import java.util.Map;
 /** Writes uncertain answerability rows to internal CSV/JSON artifacts. */
 public final class AnswerabilityReviewQueueExporter {
 
-    public static final String DEFAULT_EXPORT_DIR = ".cursor/evidence/answerability-labeling";
+    public static final String DEFAULT_EXPORT_DIR = "exports/evaluation-evidence/answerability-labeling";
 
     private static final ObjectMapper MAPPER =
             new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);

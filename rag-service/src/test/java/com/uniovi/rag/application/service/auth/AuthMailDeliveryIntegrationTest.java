@@ -52,7 +52,9 @@ import static org.mockito.Mockito.when;
             "rag.auth.mail.delivery-mode=smtp",
             "spring.mail.host=smtp.test.local",
             "spring.mail.port=587",
-            "rag.auth.webapp-base-url=http://localhost:3000"
+            "rag.auth.webapp-base-url=http://localhost:3000",
+            "rag.auth.legal.privacy-policy-version=v1",
+            "rag.auth.legal.terms-version=v1"
         })
 @EnabledIf(
         value = "com.uniovi.rag.testsupport.TestEnvironment#isSpringBootPostgresAvailable",

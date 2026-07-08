@@ -22,6 +22,7 @@ import com.uniovi.rag.interfaces.rest.dto.ExperimentalPresetCatalogItemDto;
 import com.uniovi.rag.interfaces.rest.dto.PatchConversationRequest;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeIndexCompatibilityDto;
+import com.uniovi.rag.application.service.chat.IndexAwareChatPresetDefaultService;
 import com.uniovi.rag.application.service.config.ChatPresetDefaults;
 import com.uniovi.rag.application.service.preset.PresetService;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
@@ -65,6 +66,7 @@ class ConversationApplicationServicePresetPatchTest {
                         knowledgeDocumentRepository,
                         presetService,
                         chatPresetDefaults,
+                        mock(IndexAwareChatPresetDefaultService.class),
                         experimentalPresetCatalogService,
                         runtimeConfigValidationService);
     }

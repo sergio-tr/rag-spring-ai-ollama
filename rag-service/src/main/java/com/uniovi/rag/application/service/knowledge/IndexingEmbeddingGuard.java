@@ -19,6 +19,11 @@ public class IndexingEmbeddingGuard {
         return properties.effectiveEmbedMaxChars(profileChunkMaxChars);
     }
 
+    /** Ceiling for a single whole-document embed (DOCUMENT_LEVEL vector, HYBRID doc-tail vector). */
+    public int effectiveWholeDocumentEmbedMaxChars() {
+        return properties.effectiveWholeDocumentEmbedMaxChars();
+    }
+
     public boolean retryOnContextLength() {
         return properties.retryOnContextLength();
     }

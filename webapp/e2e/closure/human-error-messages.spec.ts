@@ -10,7 +10,7 @@ import {
 
 const EVIDENCE_DIR = path.resolve(
   __dirname,
-  "../../../.cursor/evidence/p0-lab-rag-runtime-closure/human-errors",
+  "../../../docs/evidence/p0-lab-rag-runtime-closure/human-errors",
 );
 
 const FORBIDDEN_IN_MAIN = [
@@ -116,7 +116,7 @@ test.describe("Closure human error messages @closure @fullstack @wave2", () => {
     const banner = page.getByTestId("lab-llm-model-availability-blocked");
     const visible = await banner.isVisible().catch(() => false);
     if (!visible) {
-      test.skip(true, "Environment has two or more LLM models — availability banner not shown");
+      test.skip(true, "Environment has two or more LLM models - availability banner not shown");
     }
     const text = (await banner.textContent()) ?? "";
     expect(text).not.toMatch(/\bBLOCKED_BY_MODEL_AVAILABILITY\b/);

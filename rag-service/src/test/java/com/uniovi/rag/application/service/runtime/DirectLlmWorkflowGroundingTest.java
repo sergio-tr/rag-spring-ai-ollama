@@ -13,6 +13,7 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
 import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvokerTestSupport;
+import com.uniovi.rag.testsupport.config.TestConfigurablePromptResolver;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -29,7 +30,7 @@ class DirectLlmWorkflowGroundingTest {
     @Test
     void documentBoundQuestion_whenRetrievalRequired_returnsControlledMessage_andSkipsLlm() {
         RagLlmChatInvoker invoker = RagLlmChatInvokerTestSupport.stubContent("LLM should not answer this");
-        DirectLlmWorkflow workflow = new DirectLlmWorkflow(invoker, null);
+        DirectLlmWorkflow workflow = new DirectLlmWorkflow(invoker, TestConfigurablePromptResolver.answerPromptResolver(), null);
 
         var out =
                 workflow.execute(ctxWithQuery("¿Quién presidió las actas donde se menciona el ascensor?", true));
@@ -41,7 +42,7 @@ class DirectLlmWorkflowGroundingTest {
     @Test
     void generalQuestion_allowsNormalLlmAnswer() {
         RagLlmChatInvoker invoker = RagLlmChatInvokerTestSupport.stubContent("Buenos días");
-        DirectLlmWorkflow workflow = new DirectLlmWorkflow(invoker, null);
+        DirectLlmWorkflow workflow = new DirectLlmWorkflow(invoker, TestConfigurablePromptResolver.answerPromptResolver(), null);
 
         var out = workflow.execute(ctxWithQuery("buenos dias", true));
         assertThat(out.answerText()).isEqualTo("Buenos días");
@@ -50,7 +51,7 @@ class DirectLlmWorkflowGroundingTest {
     @Test
     void documentBoundQuestion_whenRetrievalDisabled_usesDirectBaselineLlm() {
         RagLlmChatInvoker invoker = RagLlmChatInvokerTestSupport.stubContent("baseline ok");
-        DirectLlmWorkflow workflow = new DirectLlmWorkflow(invoker, null);
+        DirectLlmWorkflow workflow = new DirectLlmWorkflow(invoker, TestConfigurablePromptResolver.answerPromptResolver(), null);
 
         var out =
                 workflow.execute(ctxWithQuery("¿Quién presidió las actas donde se menciona el ascensor?", false));

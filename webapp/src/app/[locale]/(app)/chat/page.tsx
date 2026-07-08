@@ -23,8 +23,14 @@ import {
 } from "@/features/chat/lib/chat-message-order";
 import { useChatRuntimeState } from "@/features/chat/hooks/use-chat-runtime-state";
 import { optimisticConsumed } from "@/features/chat/lib/chat-optimistic";
-import { useModelsCatalog } from "@/features/chat/hooks/use-models-catalog";
-import { useChatPresetsCatalog } from "@/features/chat/hooks/use-chat-presets-catalog";
+import { useMeSelectableLlmModels } from "@/features/chat/hooks/use-me-selectable-llm-models";
+import { useProjectCompatiblePresets } from "@/features/chat/hooks/use-project-compatible-presets";
+import {
+  compatibilityByExperimentalPresetId,
+  compatibilityByProductPresetId,
+  experimentalPresetsFromCompatible,
+  productPresetsFromCompatible,
+} from "@/features/chat/lib/chat-preset-compatibility";
 import {
   useProjectDocumentsForConversation,
   useUploadConversationOverlayDocument,
@@ -43,9 +49,7 @@ import {
 import { chatFailureHintForCode, normalizeChatFailureCode, resolveChatJobFailureUserHint } from "@/features/chat/lib/chat-job-errors";
 import {
   readProjectClassifierModelPreference,
-  readProjectLlmModelPreference,
   writeProjectClassifierModelPreference,
-  writeProjectLlmModelPreference,
 } from "@/features/chat/lib/chat-model-persistence";
 import { followLabJob } from "@/lib/lab-job-follow";
 import { beginTraceSession, endTraceSession } from "@/lib/trace-session";
@@ -72,6 +76,16 @@ import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 import { ChatAssistantMessageExtras } from "@/features/chat/components/ChatAssistantMessageExtras";
 import { ChatConfigurationSidePanel } from "@/features/chat/components/ChatConfigurationSidePanel";
 import { useChatConfigurationPanelStore } from "@/features/chat/store/chat-configuration-panel.store";
+import {
+  markUserMessageEdited,
+  readEditedUserMessageIds,
+} from "@/features/chat/lib/edited-message-marker";
+import {
+  clearLastConversationId,
+  writeLastConversationId,
+} from "@/features/chat/lib/last-conversation-persistence";
+import { resolveInitialConversationId } from "@/features/chat/lib/resolve-initial-conversation";
+import { ChatAssistantMarkdown } from "@/features/messages/components/ChatAssistantMarkdown";
 
 const CHAT_CONV_LIST_COLLAPSED_KEY = "chat-conv-list-collapsed";
 
@@ -94,11 +108,14 @@ function coerceBool(v: unknown): boolean {
   return v === true || v === "true";
 }
 
-function firstRuntimeBlockingMessage(runtimeState: {
-  isValid?: boolean;
-  blockingIssues?: Array<{ code?: string | null; message?: string | null }>;
-  validation?: { valid: boolean; supported: boolean; errors: Array<{ code?: string | null; message?: string | null }> };
-} | null): string | null {
+function firstRuntimeBlockingMessage(
+  runtimeState: {
+    isValid?: boolean;
+    blockingIssues?: Array<{ code?: string | null; message?: string | null }>;
+    validation?: { valid: boolean; supported: boolean; errors: Array<{ code?: string | null; message?: string | null }> };
+  } | null,
+  t: (key: string) => string,
+): string | null {
   if (!runtimeState) return null;
   const issues = runtimeState.blockingIssues ?? runtimeState.validation?.errors ?? [];
   const first = issues.find((i) => typeof i.message === "string" && i.message.trim() !== "");
@@ -106,7 +123,7 @@ function firstRuntimeBlockingMessage(runtimeState: {
   const valid =
     runtimeState.isValid ??
     (runtimeState.validation ? runtimeState.validation.valid && runtimeState.validation.supported : true);
-  return valid ? null : "Configuration is invalid. Open Chat configuration to resolve it.";
+  return valid ? null : `${t("chatConfigInvalidTitle")} ${t("chatConfigInvalidOpenPanel")}`;
 }
 
 function firstRuntimeBlockingUserMessage(
@@ -123,7 +140,7 @@ function firstRuntimeBlockingUserMessage(
     (i) => normalizeChatFailureCode(i.code) || (typeof i.message === "string" && i.message.trim() !== ""),
   );
   const mapped = first ? chatFailureHintForCode(first.code, t) : null;
-  return mapped ?? firstRuntimeBlockingMessage(runtimeState);
+  return mapped ?? firstRuntimeBlockingMessage(runtimeState, t);
 }
 
 function firstRuntimeBlockingCode(
@@ -228,6 +245,19 @@ function scheduleHydrateComposerFromDraft(
   }, 0);
 }
 
+const CHAT_MESSAGE_ROW = "chat-message-row rounded-lg px-3 py-2 text-sm";
+const CHAT_MESSAGE_USER = cn(CHAT_MESSAGE_ROW, "chat-message-user bg-primary text-primary-foreground");
+const CHAT_MESSAGE_ASSISTANT = cn(CHAT_MESSAGE_ROW, "chat-message-assistant border bg-background");
+const CHAT_MESSAGE_ASSISTANT_CLARIFICATION = cn(
+  CHAT_MESSAGE_ROW,
+  "chat-message-assistant border border-amber-500/55 bg-amber-500/10",
+);
+const CHAT_MESSAGE_ASSISTANT_STREAMING = cn(
+  CHAT_MESSAGE_ROW,
+  "chat-message-assistant overflow-x-hidden border border-dashed bg-muted/20",
+);
+const CHAT_MESSAGE_ASSISTANT_STATUS = cn(CHAT_MESSAGE_ROW, "chat-message-assistant w-full");
+
 function ChatPageInner() {
   const t = useTranslations("Chat");
   const tHelp = useTranslations("Help");
@@ -250,14 +280,9 @@ function ChatPageInner() {
   const [input, setInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendFailureCode, setSendFailureCode] = useState<string | null>(null);
-  const llmPreferenceAppliedRef = useRef<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [editingUserMessageId, setEditingUserMessageId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
-  /** Empty string = backend default model. Scoped to the conversation edited locally. */
-  const [llmModelChoiceDraft, setLlmModelChoiceDraft] = useState<{ conversationId: string | null; value: string }>(
-    { conversationId: null, value: "" },
-  );
   /** Empty string = no per-conversation classifier override (project RAG JSON applies). */
   const [classifierModelChoiceDraft, setClassifierModelChoiceDraft] = useState<{
     conversationId: string | null;
@@ -312,6 +337,20 @@ function ChatPageInner() {
   /** Visible pipeline stages between send and a terminal assistant outcome. */
   const [assistantPhase, setAssistantPhase] = useState<AssistantPipelinePhase>(null);
   const [chatDropActive, setChatDropActive] = useState(false);
+  const [editedUserMessageIds, setEditedUserMessageIds] = useState<Set<string>>(() => new Set());
+  const lastConversationRestoreKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!conversationId) {
+      const clearTimer = setTimeout(() => setEditedUserMessageIds(new Set()), 0);
+      return () => clearTimeout(clearTimer);
+    }
+    const hydrateTimer = setTimeout(
+      () => setEditedUserMessageIds(readEditedUserMessageIds(conversationId)),
+      0,
+    );
+    return () => clearTimeout(hydrateTimer);
+  }, [conversationId]);
 
   useEffect(() => {
     if (urlConversationId && urlConversationId !== conversationId) {
@@ -323,8 +362,10 @@ function ChatPageInner() {
   const selectConversation = useCallback(
     (nextId: string) => {
       setConversationId(nextId);
-      if (!projectId) return;
-      router.push(buildProjectScopedChatHref(projectId, nextId));
+      if (projectId) {
+        writeLastConversationId(projectId, nextId);
+        router.push(buildProjectScopedChatHref(projectId, nextId));
+      }
     },
     [router, projectId],
   );
@@ -341,6 +382,18 @@ function ChatPageInner() {
   const { data: convs } = useConversations(projectId);
   const createConv = useCreateConversation(projectId);
   const patchConv = usePatchConversation(projectId);
+
+  useEffect(() => {
+    if (!projectId || !convs?.length || urlConversationId) return;
+    const attemptKey = `${projectId}:${convs.length}`;
+    if (lastConversationRestoreKeyRef.current === attemptKey) return;
+    if (conversationId && convs.some((c) => c.id === conversationId)) return;
+    const resolved = resolveInitialConversationId(convs, projectId, null);
+    if (!resolved) return;
+    lastConversationRestoreKeyRef.current = attemptKey;
+    queueMicrotask(() => selectConversation(resolved));
+  }, [projectId, convs, urlConversationId, conversationId, selectConversation]);
+
   // Runtime state is the authoritative steady-state validation source.
   const { data: rawMessages, refetch: refetchMessages } = useConversationMessages(conversationId ?? undefined);
   const messages = useMemo(() => {
@@ -362,14 +415,30 @@ function ChatPageInner() {
     () => projectListData?.items?.find((p) => p.id === projectId),
     [projectListData?.items, projectId],
   );
-  const { data: modelsCatalog, isError: modelsError, error: modelsQueryError } = useModelsCatalog();
-  const chatPresetsCatalog = useChatPresetsCatalog();
-  const presets = chatPresetsCatalog.data?.productPresets;
-  const presetsError = chatPresetsCatalog.isError;
-  const presetsLoading = chatPresetsCatalog.isLoading;
-  const experimentalPresets = chatPresetsCatalog.data?.experimentalPresets;
-  const experimentalPresetsLoading = chatPresetsCatalog.isLoading;
-  const experimentalPresetsError = chatPresetsCatalog.isError;
+  const {
+    data: selectableLlmModelsResponse,
+    isError: modelsError,
+    error: modelsQueryError,
+    isLoading: selectableLlmModelsLoading,
+  } = useMeSelectableLlmModels("CHAT");
+  const projectCompatiblePresetsQuery = useProjectCompatiblePresets(projectId);
+  const projectCompatiblePresets = projectCompatiblePresetsQuery.data ?? null;
+  const compatibleProductPresets = projectCompatiblePresets?.productPresets;
+  const compatibleExperimentalPresets = projectCompatiblePresets?.experimentalPresets;
+  const presets = productPresetsFromCompatible(compatibleProductPresets);
+  const presetsError = projectCompatiblePresetsQuery.isError;
+  const presetsLoading = projectCompatiblePresetsQuery.isLoading;
+  const experimentalPresets = experimentalPresetsFromCompatible(compatibleExperimentalPresets);
+  const experimentalPresetsLoading = projectCompatiblePresetsQuery.isLoading;
+  const experimentalPresetsError = projectCompatiblePresetsQuery.isError;
+  const productPresetCompatibility = useMemo(
+    () => compatibilityByProductPresetId(compatibleProductPresets),
+    [compatibleProductPresets],
+  );
+  const experimentalPresetCompatibility = useMemo(
+    () => compatibilityByExperimentalPresetId(compatibleExperimentalPresets),
+    [compatibleExperimentalPresets],
+  );
 
   const activeConv = useMemo(
     () => (conversationId && convs ? convs.find((c) => c.id === conversationId) : undefined),
@@ -377,8 +446,10 @@ function ChatPageInner() {
   );
   const conversationNotFound = Boolean(conversationId && convs && !activeConv);
 
-  const llmModelChoice =
-    llmModelChoiceDraft.conversationId === activeConv?.id ? llmModelChoiceDraft.value : (activeConv?.llmModel ?? "");
+  const runtimeStateQuery = useChatRuntimeState(conversationId);
+  const runtimeState = runtimeStateQuery.data ?? null;
+
+  const llmModelChoice = useMemo(() => activeConv?.llmModel?.trim() ?? "", [activeConv?.llmModel]);
   const classifierModelChoice =
     classifierModelChoiceDraft.conversationId === activeConv?.id
       ? classifierModelChoiceDraft.value
@@ -392,7 +463,11 @@ function ChatPageInner() {
   const limitDocsToggleNoticeEffective =
     limitDocsDisabled && !limitDocs ? t("limitDocumentsNoReadyHint") : limitDocsToggleNotice;
 
-  const presetsCatalogEmpty = !presetsError && presets?.length === 0;
+  const presetsCatalogEmpty =
+    !presetsError &&
+    !presetsLoading &&
+    (projectCompatiblePresets?.productPresets.length ?? 0) === 0 &&
+    (projectCompatiblePresets?.experimentalPresets.length ?? 0) === 0;
 
   const syntheticPresetOptionNeeded = false;
 
@@ -401,44 +476,28 @@ function ChatPageInner() {
 
   useEffect(() => {
     patchConv.reset();
-    llmPreferenceAppliedRef.current = null;
   }, [conversationId]); /* eslint-disable-line react-hooks/exhaustive-deps -- reset patch mutation only when switching chats */
 
   useEffect(() => {
     if (!activeConv?.id) return;
-    const fromConv = activeConv.llmModel?.trim() ?? "";
-    const fromProject = projectId ? readProjectLlmModelPreference(projectId) : "";
     const clfConv = activeConv.classifierModelId?.trim() ?? "";
     const clfProject = projectId ? readProjectClassifierModelPreference(projectId) : "";
     const syncTimer = setTimeout(() => {
-      setLlmModelChoiceDraft({
-        conversationId: activeConv.id,
-        value: fromConv || fromProject,
-      });
       setClassifierModelChoiceDraft({
         conversationId: activeConv.id,
         value: clfConv || clfProject,
       });
     }, 0);
     return () => clearTimeout(syncTimer);
-  }, [activeConv?.id, activeConv?.llmModel, activeConv?.classifierModelId, projectId]);
+  }, [activeConv?.id, activeConv?.classifierModelId, projectId]);
 
-  useEffect(() => {
-    if (!conversationId || !projectId || !activeConv) return;
-    const pref = readProjectLlmModelPreference(projectId);
-    if (!pref || activeConv.llmModel?.trim()) return;
-    if (llmPreferenceAppliedRef.current === conversationId) return;
-    llmPreferenceAppliedRef.current = conversationId;
-    patchConv.mutate({ conversationId, body: { llmModel: pref } });
-  }, [conversationId, projectId, activeConv, patchConv]);
+  // Legacy conversation llmModel auto-seed removed (A1): final_answer model comes from Assistant Configuration.
 
   useEffect(() => {
     const syncTimer = setTimeout(() => setTitleDraft(activeConv?.title ?? ""), 0);
     return () => clearTimeout(syncTimer);
   }, [activeConv?.id, activeConv?.title]);
 
-  const runtimeStateQuery = useChatRuntimeState(conversationId);
-  const runtimeState = runtimeStateQuery.data ?? null;
   const presetSelectValue = runtimeState?.selectedPresetId ?? "";
   const runtimeBlockingMessage = firstRuntimeBlockingUserMessage(runtimeState, t);
   const runtimeBlockingCode = firstRuntimeBlockingCode(runtimeState);
@@ -631,6 +690,7 @@ function ChatPageInner() {
             task: terminal,
             errorMessageSanitized: sanitized,
             t,
+            provider: selectableLlmModelsResponse?.effectiveProvider ?? null,
           });
           setSendError(hint);
           setSendFailureCode(
@@ -691,7 +751,15 @@ function ChatPageInner() {
         setStreaming(false);
       }
     },
-    [refetchMessages, resetStreaming, setLastDone, setStreaming, setStreamingText, t],
+    [
+      refetchMessages,
+      resetStreaming,
+      selectableLlmModelsResponse,
+      setLastDone,
+      setStreaming,
+      setStreamingText,
+      t,
+    ],
   );
 
   const send = useCallback(async () => {
@@ -717,7 +785,6 @@ function ChatPageInner() {
     setAssistantPhase("sending");
     const body: PostMessageBody = {
       content: text,
-      llmModel: llmModelChoice.trim() ? llmModelChoice.trim() : null,
     };
     let targetConversationId = conversationId;
     setIsSending(true);
@@ -739,7 +806,7 @@ function ChatPageInner() {
         apiProductPath(`/conversations/${targetConversationId}/runtime-state`),
         { signal },
       );
-      const blocking = firstRuntimeBlockingMessage(rs);
+      const blocking = firstRuntimeBlockingMessage(rs,t);
       if (blocking) {
         const msg = blocking;
         setSendError(msg);
@@ -798,7 +865,6 @@ function ChatPageInner() {
     input,
     isSending,
     isStreaming,
-    llmModelChoice,
     refetchMessages,
     runChatJob,
     runtimeBlockingCode,
@@ -879,7 +945,6 @@ function ChatPageInner() {
       );
       const postBody: PostMessageBody = {
         content: text,
-        llmModel: llmModelChoice.trim() ? llmModelChoice.trim() : null,
         continueAfterUserMessageId: userMsgId,
       };
 
@@ -891,7 +956,7 @@ function ChatPageInner() {
         apiProductPath(`/conversations/${conversationId}/runtime-state`),
         { signal },
       );
-      const blocking = firstRuntimeBlockingMessage(rs);
+      const blocking = firstRuntimeBlockingMessage(rs,t);
       if (blocking) {
         setSendError(blocking);
         return;
@@ -908,6 +973,8 @@ function ChatPageInner() {
       );
       setEditingUserMessageId(null);
       setEditBody("");
+      markUserMessageEdited(conversationId, userMsgId);
+      setEditedUserMessageIds((prev) => new Set(prev).add(userMsgId));
       try {
         await refetchMessages();
       } catch (refetchErr) {
@@ -928,7 +995,6 @@ function ChatPageInner() {
     editBody,
     editingUserMessageId,
     isSending,
-    llmModelChoice,
     queryClient,
     refetchMessages,
     runChatJob,
@@ -990,34 +1056,29 @@ function ChatPageInner() {
         // Disabled experimental presets must be visible but never persistable in Chat.
         return;
       }
+      const productCompat = productPresetCompatibility.get(next);
+      if (productCompat && !productCompat.selectable) {
+        return;
+      }
+      const experimentalCompat = experimentalPresetCompatibility.get(next);
+      if (experimentalCompat && !experimentalCompat.selectable) {
+        return;
+      }
       patchConv.mutate({ conversationId, body: { presetId: next } });
     },
-    [conversationId, patchConv, experimentalPresets],
+    [conversationId, patchConv, experimentalPresets, productPresetCompatibility, experimentalPresetCompatibility],
   );
 
   const applyLlmModelChoice = useCallback(
     (v: string) => {
       if (!conversationId) return;
-      setLlmModelChoiceDraft({ conversationId, value: v });
-      const persistOnSuccess = () => {
-        if (projectId) writeProjectLlmModelPreference(projectId, v);
-      };
-      const revertOnError = () => {
-        setLlmModelChoiceDraft({ conversationId, value: activeConv?.llmModel ?? "" });
-      };
       if (!v.trim()) {
-        patchConv.mutate(
-          { conversationId, body: { clearLlmModel: true } },
-          { onSuccess: persistOnSuccess, onError: revertOnError },
-        );
+        patchConv.mutate({ conversationId, body: { clearLlmModel: true } });
         return;
       }
-      patchConv.mutate(
-        { conversationId, body: { llmModel: v.trim() } },
-        { onSuccess: persistOnSuccess, onError: revertOnError },
-      );
+      patchConv.mutate({ conversationId, body: { llmModel: v.trim() } });
     },
-    [activeConv?.llmModel, conversationId, patchConv, projectId],
+    [conversationId, patchConv],
   );
 
   const applyClassifierModelChoice = useCallback(
@@ -1272,7 +1333,9 @@ function ChatPageInner() {
       setLlmModelChoice: applyLlmModelChoice,
       classifierModelChoice,
       setClassifierModelChoice: applyClassifierModelChoice,
-      modelsCatalog,
+      selectableLlmModels: selectableLlmModelsResponse?.models ?? [],
+      selectableLlmModelsLoading,
+      selectableLlmModelsEffectiveProvider: selectableLlmModelsResponse?.effectiveProvider,
       modelsError,
       modelsErrorMessage: modelsErrorMessage ?? "",
       presetSelectValue,
@@ -1280,6 +1343,9 @@ function ChatPageInner() {
       presets,
       presetsError,
       presetsLoading,
+      projectCompatiblePresets,
+      compatibleProductPresets,
+      compatibleExperimentalPresets,
       experimentalPresets: experimentalPresets ?? [],
       experimentalPresetsLoading,
       experimentalPresetsError,
@@ -1318,7 +1384,9 @@ function ChatPageInner() {
     applyLlmModelChoice,
     classifierModelChoice,
     applyClassifierModelChoice,
-    modelsCatalog,
+    selectableLlmModelsResponse?.models,
+    selectableLlmModelsResponse?.effectiveProvider,
+    selectableLlmModelsLoading,
     modelsError,
     modelsErrorMessage,
     presetSelectValue,
@@ -1326,6 +1394,9 @@ function ChatPageInner() {
     presets,
     presetsError,
     presetsLoading,
+    projectCompatiblePresets,
+    compatibleProductPresets,
+    compatibleExperimentalPresets,
     experimentalPresets,
     experimentalPresetsLoading,
     experimentalPresetsError,
@@ -1363,7 +1434,7 @@ function ChatPageInner() {
   }
 
   return (
-    <div data-testid="chat-page" className="flex h-full min-h-0 flex-1 flex-col gap-2 md:flex-row md:gap-3">
+    <div data-testid="chat-page" className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col gap-2 md:flex-row md:gap-3">
       {convListCollapsed ? (
         <div className="flex w-full shrink-0 flex-col items-stretch gap-2 border-border border-b pb-2 md:w-auto md:border-b-0 md:border-r md:pb-0 md:pr-2">
           <Button
@@ -1372,12 +1443,13 @@ function ChatPageInner() {
             size="icon-sm"
             className="shrink-0 self-start"
             aria-expanded={false}
-            aria-label={t("sidebarExpand")}
+            aria-label={`${t("sidebarExpand")}. ${t("sidebarCollapsedHint")}`}
+            title={t("sidebarCollapsedHint")}
             onClick={() => persistConvListCollapsed(false)}
           >
             <PanelLeftOpen className="size-4" />
+            <span className="sr-only">{t("sidebarCollapsedHint")}</span>
           </Button>
-          <p className="text-muted-foreground hidden text-xs md:block md:max-w-[7rem]">{t("sidebarCollapsedHint")}</p>
         </div>
       ) : (
         <aside
@@ -1444,20 +1516,19 @@ function ChatPageInner() {
       )}
       <div
         data-testid="chat-main-workspace"
-        data-chat-layout-mode={desktopConfigSplit ? "split" : "centered"}
-        className={cn(
-          "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row md:flex-nowrap md:gap-3",
-          !desktopConfigSplit && "md:justify-center",
-        )}
+        data-chat-layout-mode={desktopConfigSplit ? "split" : "expanded"}
+        className="flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden md:flex-row md:flex-nowrap"
       >
         <div
           data-testid="chat-readable-column"
           className={cn(
-            "flex w-full min-h-0 min-w-0 flex-col gap-3 px-2 sm:px-3 md:px-5",
-            desktopConfigSplit
-              ? "md:min-w-0 md:flex-1"
-              : "md:mx-auto md:w-full md:max-w-[min(50%,48rem)] md:flex-none",
+            "flex min-h-0 min-w-0 w-full flex-1 flex-col",
+            desktopConfigSplit && "md:min-w-0",
           )}
+        >
+        <div
+          data-testid="chat-thread-shell"
+          className="chat-thread-shell flex min-h-0 min-w-0 flex-1 flex-col gap-3"
         >
         {conversationId && active ? (
           <header className="flex flex-wrap items-end gap-3 gap-y-2 border-border border-b pb-3">
@@ -1538,7 +1609,7 @@ function ChatPageInner() {
         <div
           ref={scrollAreaRef}
           data-testid="chat-thread-dropzone"
-          className="relative min-h-0 flex-1 space-y-3 overflow-y-auto rounded-lg border bg-card/30 p-3"
+          className="relative min-h-0 min-w-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto rounded-lg border bg-card/30 p-3"
           onDragOver={(e) => {
             // Allow dropping files anywhere in the chat thread area.
             e.preventDefault();
@@ -1616,13 +1687,10 @@ function ChatPageInner() {
               data-message-seq={typeof m.seq === "number" ? String(m.seq) : undefined}
               className={
                 m.role === "USER"
-                  ? "ml-auto max-w-[85%] rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm leading-relaxed"
-                  : cn(
-                      "mr-auto max-w-[85%] rounded-lg border px-3 py-2 text-sm leading-relaxed",
-                      isAssistantClarificationTurn(m)
-                        ? "border-amber-500/55 bg-amber-500/10"
-                        : "bg-background",
-                    )
+                  ? CHAT_MESSAGE_USER
+                  : isAssistantClarificationTurn(m)
+                    ? CHAT_MESSAGE_ASSISTANT_CLARIFICATION
+                    : CHAT_MESSAGE_ASSISTANT
               }
             >
               {m.role === "USER" &&
@@ -1673,12 +1741,21 @@ function ChatPageInner() {
                       {t("clarificationQuestionLabel")}
                     </p>
                   ) : null}
-                  <p
-                    className="whitespace-pre-wrap break-words"
-                    data-testid={m.role === "ASSISTANT" ? "chat-answer" : undefined}
-                  >
-                    {m.content}
-                  </p>
+                  {m.role === "ASSISTANT" ? (
+                    <ChatAssistantMarkdown content={m.content} data-testid="chat-answer" />
+                  ) : (
+                    <p className="whitespace-pre-wrap break-words" data-testid="chat-user-message">
+                      {m.content}
+                    </p>
+                  )}
+                  {m.role === "USER" && editedUserMessageIds.has(m.id) ? (
+                    <p
+                      className="text-primary-foreground/75 mt-1 text-[10px] font-medium"
+                      data-testid="chat-message-edited-label"
+                    >
+                      {t("messageEditedLabel")}
+                    </p>
+                  ) : null}
                   {m.role === "ASSISTANT" ? <ChatAssistantMessageExtras message={m} /> : null}
                   {m.role === "USER" && m.id === lastUserMessageId && (
                     <Button
@@ -1708,9 +1785,11 @@ function ChatPageInner() {
                       {t("retryAssistant")}
                     </Button>
                   )}
-                  {m.role === "ASSISTANT" && m.status && m.status !== "DONE" && (
-                    <p className="text-muted-foreground mt-1 text-xs">[{m.status}]</p>
-                  )}
+                  {m.role === "ASSISTANT" && m.status && m.status !== "DONE" ? (
+                    <p className="text-muted-foreground mt-1 text-xs" data-testid="chat-assistant-status">
+                      {t("assistantMessageInProgress")}
+                    </p>
+                  ) : null}
                 </>
               )}
             </div>
@@ -1719,24 +1798,24 @@ function ChatPageInner() {
             <article
               aria-label={t("optimisticUserAria")}
               data-testid="chat-optimistic-user"
-              className="ml-auto max-w-[85%] rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm leading-relaxed"
+              className={CHAT_MESSAGE_USER}
             >
               <p className="whitespace-pre-wrap break-words">{optimisticUserContent}</p>
             </article>
           ) : null}
           {showAssistantPipelineRow && assistantPipelineLabel ? (
-            <div className="mr-auto max-w-[85%] w-full min-w-0">
+            <div className={CHAT_MESSAGE_ASSISTANT_STATUS}>
               <InlineHelpStatus
                 status={assistantPipelineTraceStatus}
                 label={assistantPipelineLabel}
               />
             </div>
           ) : null}
-          {isStreaming && streamingText && (
-            <div className="mr-auto max-w-[85%] rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-sm leading-relaxed">
-              <p className="whitespace-pre-wrap break-words">{streamingText}</p>
+          {isStreaming && streamingText ? (
+            <div className={CHAT_MESSAGE_ASSISTANT_STREAMING}>
+              <ChatAssistantMarkdown content={streamingText} data-testid="chat-streaming-answer" />
             </div>
-          )}
+          ) : null}
           <div ref={bottomRef} />
         </div>
         <div className="flex w-full min-w-0 shrink-0 flex-col gap-2" data-testid="chat-composer-dock">
@@ -1873,6 +1952,7 @@ function ChatPageInner() {
           </div>
         </div>
         </div>
+        </div>
         <ChatConfigurationSidePanel
           open={Boolean(conversationId && configPanelOpen)}
           onClose={() => setConfigPanelOpen(false)}
@@ -1894,9 +1974,12 @@ function ChatPageInner() {
           conversationTitle={deleteDialogTarget?.title ?? ""}
           onDeleted={() => {
             const deletedId = deleteDialogTarget?.id;
-            if (deletedId && conversationId === deletedId && projectId) {
-              router.push(buildProjectScopedChatHref(projectId, null));
-              setConversationId(null);
+            if (deletedId && projectId) {
+              clearLastConversationId(projectId, deletedId);
+              if (conversationId === deletedId) {
+                router.push(buildProjectScopedChatHref(projectId, null));
+                setConversationId(null);
+              }
             }
           }}
         />

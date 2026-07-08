@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.preset;
 
+import com.uniovi.rag.domain.preset.UserRagPreset;
 import com.uniovi.rag.interfaces.rest.dto.CreateRagPresetRequest;
 import com.uniovi.rag.interfaces.rest.dto.PresetProfileRefDto;
 import com.uniovi.rag.interfaces.rest.dto.RagPresetDto;
@@ -77,6 +78,11 @@ public class PresetService {
                 Comparator.comparing(RagPresetEntity::isSystem)
                         .thenComparing(RagPresetEntity::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
         return rows.stream().map(PresetService::toDto).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<UserRagPreset> listUserPresets(UUID userId) {
+        return list(userId).stream().map(PresetService::toUserRagPreset).toList();
     }
 
     @Transactional(readOnly = true)
@@ -246,5 +252,17 @@ public class PresetService {
             return false;
         }
         return e.getTags().stream().anyMatch(t -> t != null && t.trim().equalsIgnoreCase("experimental"));
+    }
+
+    private static UserRagPreset toUserRagPreset(RagPresetDto dto) {
+        return new UserRagPreset(
+                dto.id(),
+                dto.name(),
+                dto.description(),
+                dto.tags() != null ? List.copyOf(dto.tags()) : List.of(),
+                dto.values() != null ? Map.copyOf(dto.values()) : Map.of(),
+                dto.system(),
+                dto.createdAt(),
+                dto.updatedAt());
     }
 }

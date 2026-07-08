@@ -26,7 +26,7 @@ HELP.md
 /nbdist/
 /.nb-gradle/
 build/
-target/
+target*/
 bin/
 # Java coverage (local HTML report; XML is committed to allow CI to upload)
 rag-service/target/site/jacoco/
@@ -106,10 +106,12 @@ next-env.d.ts
 ### Custom  ###
 enhancement/
 logs/
+.tmp/
 
 ### Exceptions ###
 # Java
 !.mvn/wrapper/maven-wrapper.jar
+.m2*/
 !**/src/main/**/build/
 !**/src/test/**/build/
 !**/src/main/**/target/
@@ -123,5 +125,8 @@ logs/
 !.yarn/versions
 # Environment variables
 !**/.env.example
+# Local evaluation evidence exports (answerability queues, observability captures)
+exports/evaluation-evidence/
+
 # Mermaid CLI raster exports (sources remain *.mmd)
 !/docs/coverage/

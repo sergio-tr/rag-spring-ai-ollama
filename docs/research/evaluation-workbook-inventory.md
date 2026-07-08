@@ -1,4 +1,4 @@
-# Evaluation workbook inventory — Phase 0
+# Evaluation workbook inventory - Phase 0
 
 **Branch:** `eval-models-and-presets`  
 **Artifact:** [`rag-service/src/main/resources/evaluation/rag_experiment_datasets_and_protocols.xlsx`](../../rag-service/src/main/resources/evaluation/rag_experiment_datasets_and_protocols.xlsx)  
@@ -26,19 +26,19 @@ This note records sheet structure and row counts for parser design (Phase 1). It
 
 **Empty sheets:** none (all listed sheets contain at least one data row).
 
-**summary_counts vs scans:** summary lists `llm_reader_questions` = 36 rows, `embedding_retrieval_queries` / `rag_preset_questions_enriched` = 60 — consistent with row scans above.
+**summary_counts vs scans:** summary lists `llm_reader_questions` = 36 rows, `embedding_retrieval_queries` / `rag_preset_questions_enriched` = 60 - consistent with row scans above.
 
 **Inconsistencies / cautions:**
 
-- `README` uses columns Item/Decision — not the same schema as data sheets (expected).
+- `README` uses columns Item/Decision - not the same schema as data sheets (expected).
 - `rag_preset_questions_enriched` header row is wide (14+ columns); confirm full header list in Phase 1 when parsing by name.
 - Semicolon-separated lists appear in `gold_document_ids` / `gold_chunk_ids` (e.g. `ACTA_1;ACTA_6`).
 
 ## Sample rows (truncated)
 
-- **llm_reader_questions:** `LLM-001` — GET_FIELD, LOW, EXACT_ENTITY, evaluation_method `normalized_exact_match`.
-- **embedding_retrieval_queries:** `EMB-001` — COUNT_DOCUMENTS, gold chunks `ACTA_1_ELEVATOR_PAINT;ACTA_6_ELEVATOR`.
-- **rag_preset_catalog_P0_P14:** P0 — Direct LLM, retrieval NONE; P14 — judges column references sufficiency/faithfulness/stop/continue.
+- **llm_reader_questions:** `LLM-001` - GET_FIELD, LOW, EXACT_ENTITY, evaluation_method `normalized_exact_match`.
+- **embedding_retrieval_queries:** `EMB-001` - COUNT_DOCUMENTS, gold chunks `ACTA_1_ELEVATOR_PAINT;ACTA_6_ELEVATOR`.
+- **rag_preset_catalog_P0_P14:** P0 - Direct LLM, retrieval NONE; P14 - judges column references sufficiency/faithfulness/stop/continue.
 
 ## Removed classpath workbook (removed from prod)
 

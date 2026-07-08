@@ -79,6 +79,20 @@ describe("use-rag-config hooks", () => {
       expect.objectContaining({ method: "PUT" }),
     );
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["config", "user"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["me", "embedding", "effective-defaults"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["chat-runtime-state"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["me", "llm", "effective-runtime"] });
+  });
+
+  it("useUserStoredRagConfigQuery loads stored user config", async () => {
+    const cfg = { topK: 4 };
+    apiFetch.mockResolvedValueOnce(cfg);
+    const { wrapper } = createWrapper();
+    const { useUserStoredRagConfigQuery } = await import("./use-rag-config");
+    const { result } = renderHook(() => useUserStoredRagConfigQuery(), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual(cfg);
+    expect(apiFetch).toHaveBeenCalledWith(expect.stringMatching(/\/config\/user\/stored$/));
   });
 
   it("usePutProjectRagConfig puts and invalidates project config query", async () => {
@@ -92,6 +106,9 @@ describe("use-rag-config hooks", () => {
       expect.objectContaining({ method: "PUT" }),
     );
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["config", "project", "p2"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["me", "embedding", "effective-defaults"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["chat-runtime-state"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["me", "llm", "effective-runtime"] });
   });
 
   it("useDeleteProjectRagConfig deletes and invalidates project config query", async () => {
@@ -105,5 +122,8 @@ describe("use-rag-config hooks", () => {
       expect.objectContaining({ method: "DELETE" }),
     );
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["config", "project", "p3"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["me", "embedding", "effective-defaults"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["chat-runtime-state"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["me", "llm", "effective-runtime"] });
   });
 });

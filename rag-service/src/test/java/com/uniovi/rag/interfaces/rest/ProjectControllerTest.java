@@ -23,11 +23,17 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.uniovi.rag.interfaces.rest.dto.CreateProjectRequest;
+import com.uniovi.rag.interfaces.rest.dto.ProjectSummaryDto;
+import java.time.Instant;
 
 @WebMvcTest(controllers = ProjectController.class)
 @ContextConfiguration(classes = RagWebMvcTestApplication.class)
@@ -55,6 +61,32 @@ class ProjectControllerTest {
     @AfterEach
     void clearSecurityContext() {
         SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void createProjectReturnsCreatedProjectDto() throws Exception {
+        UUID projectId = UUID.randomUUID();
+        ProjectSummaryDto created =
+                new ProjectSummaryDto(
+                        projectId,
+                        "New project",
+                        null,
+                        0L,
+                        0L,
+                        Instant.parse("2026-07-01T12:00:00Z"),
+                        null,
+                        null,
+                        null);
+        when(projectService.create(eq(userId), any(CreateProjectRequest.class)))
+                .thenReturn(created);
+
+        mockMvc.perform(
+                        post(path("/projects"))
+                                .contentType("application/json")
+                                .content("{\"name\":\"New project\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(projectId.toString()))
+                .andExpect(jsonPath("$.name").value("New project"));
     }
 
     @Test

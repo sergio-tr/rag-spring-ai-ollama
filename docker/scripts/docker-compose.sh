@@ -7,7 +7,7 @@
 #
 #   down: second arg defaults to prod if omitted (compat with old down.sh).
 #
-# Env (optional; runs before compose up/build — not before dev down):
+# Env (optional; runs before compose up/build - not before dev down):
 #   --env <name>     create-env-* (repeatable): db, obs, rag, classifier, ollama, webapp, all
 #   --no-env-prompt  skip interactive set-env.sh question
 #
@@ -24,7 +24,8 @@
 #   --all  = --gpu --obs --classifier --logs --infra --rag (no --proxy; add --proxy to use nginx in dev)
 #
 # prod:
-#   [--all] [--obs] [--obs-private] [--gpu] [--ollama] [--classifier-gpu] [--ollama-remote] [--logs] [--infra] [--mail] [--volumes]
+#   [--server] [--all] [--obs] [--obs-private] [--gpu] [--ollama] [--classifier-gpu] [--ollama-remote] [--logs] [--infra] [--mail] [--volumes]
+#   --server: university/production VM - merges compose.prod-server.yml (no host backend/classifier ports); implies --ollama-remote.
 #   --volumes only applies to "down prod".
 #   --all  = --obs --gpu --logs --infra (and for down: removes volumes)
 #
@@ -39,7 +40,7 @@ usage() {
   echo "  down: <dev|prod> optional (defaults to prod)" >&2
   echo "  Env: --env <db|obs|rag|classifier|ollama|all> ..., --no-env-prompt" >&2
   echo "  dev:  [--all] [--gpu|--ollama] [--ollama-remote] [--obs] [--classifier] [--classifier-gpu] [--logs] [--infra] [--mail] [--rag] [--proxy] [--down] [--volumes]" >&2
-  echo "  prod: [--all] [--obs] [--obs-private] [--gpu|--ollama] [--ollama-remote] [--classifier-gpu] [--logs] [--infra] [--mail] [--volumes]" >&2
+  echo "  prod: [--server] [--all] [--obs] [--obs-private] [--gpu|--ollama] [--ollama-remote] [--classifier-gpu] [--logs] [--infra] [--mail] [--volumes]" >&2
   exit 1
 }
 
@@ -239,6 +240,7 @@ if [ "$MODE" = dev ]; then
   CLASSIFIER_CUDA_BASE_IMAGE=nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04
   if [ "$WITH_CLASSIFIER_GPU" = true ] && [ "$WITH_NVIDIA" = true ]; then
     export CLASSIFIER_PYTHON_BASE_IMAGE="$CLASSIFIER_CUDA_BASE_IMAGE"
+    export CLASSIFIER_INSTALL_GPU_EXTRAS=1
   fi
 
   COMPOSE_FILES=(-f "docker-compose.yml")
@@ -360,17 +362,17 @@ if [ "$MODE" = dev ]; then
     echo "  Classifier:  cd classifier-service && uvicorn uvicorn_entry:app --reload --reload-dir app --port 8000"
   fi
   if [ "$WITH_RAG_BACKEND" = true ]; then
-    echo "  Backend:     in Docker (backend-dev) — hot reload via DevTools. Container port ${SERVER_PORT:-9000}."
+    echo "  Backend:     in Docker (backend-dev) - hot reload via DevTools. Container port ${SERVER_PORT:-9000}."
     if [ "$WITH_DEV_PROXY" = true ]; then
       _https_port="${REVERSE_PROXY_DEV_HTTPS_PORT:-8444}"
       if [ "${REVERSE_PROXY_ENFORCE_HTTPS:-0}" = "1" ]; then
-        echo "               Entry: https://127.0.0.1:${_https_port}/ (self-signed; HTTP :${REVERSE_PROXY_DEV_HTTP_PORT:-80} redirects)."
+        echo "               Entry: https://127.0.0.1:${_https_port}/ (self-signed; HTTP :${REVERSE_PROXY_DEV_HTTP_PORT:-8080} redirects)."
       else
-        echo "               Entry: http://127.0.0.1:${REVERSE_PROXY_DEV_HTTP_PORT:-80}/ (HTTPS optional: https://127.0.0.1:${_https_port}/)."
+        echo "               Entry: http://127.0.0.1:${REVERSE_PROXY_DEV_HTTP_PORT:-8080}/ (HTTPS optional: https://127.0.0.1:${_https_port}/)."
       fi
       echo "               API + BFF via nginx (NEXT_PUBLIC_API_BASE_URL empty = same-origin ${NEXT_PUBLIC_RAG_API_PREFIX:-/api/v5})."
     else
-      echo "               API on host: http://127.0.0.1:${BACKEND_PORT:-9000} — set WEBAPP_NEXT_PUBLIC_API_BASE_URL accordingly in webapp/.env for the browser."
+      echo "               API on host: http://127.0.0.1:${BACKEND_PORT:-9000} - set WEBAPP_NEXT_PUBLIC_API_BASE_URL accordingly in webapp/.env for the browser."
     fi
     if [ "$WITH_GPU" = true ] && [ "$WITH_OLLAMA_REMOTE" != true ]; then
       echo "               Ollama: container at http://ollama:11434 (profile ollama). Set OLLAMA_BASE_URL in rag-service/.env to match."
@@ -401,7 +403,7 @@ if [ "$MODE" = dev ]; then
     echo "Mailpit SMTP:         127.0.0.1:${MAILPIT_SMTP_PORT:-1025} (in-stack host: mailpit:1025)"
     if [ "$WITH_RAG_BACKEND" = true ]; then
       if [ "$WITH_DEV_PROXY" = true ]; then
-        echo "Auth email links:     set RAG_AUTH_WEBAPP_BASE_URL=http://127.0.0.1 (or https://127.0.0.1:${REVERSE_PROXY_DEV_HTTPS_PORT:-8444}) in rag-service/.env"
+        echo "Auth email links:     set RAG_AUTH_WEBAPP_BASE_URL=http://127.0.0.1 (or https://127.0.0.1:${REVERSE_PROXY_DEV_HTTPS_PORT:-8443}) in rag-service/.env"
       else
         echo "Auth email links:     set RAG_AUTH_WEBAPP_BASE_URL to match how you open the webapp (see WEBAPP_HTTP_PORT in webapp/.env)"
       fi
@@ -420,6 +422,7 @@ WITH_LOGS=false
 WITH_INFRA=false
 WITH_MAIL=false
 WITH_VOLUMES=false
+WITH_SERVER=false
 ALL=false
 WITH_CLASSIFIER_GPU=false
 WITH_OLLAMA_REMOTE=false
@@ -428,6 +431,7 @@ WITH_NVIDIA=false
 for arg in "$@"; do
   case "$arg" in
     --all) ALL=true ;;
+    --server) WITH_SERVER=true ;;
     --obs) WITH_OBS=true ;;
     --obs-private) WITH_OBS=true; WITH_OBS_PRIVATE=true ;;
     --gpu) WITH_GPU=true ;;
@@ -455,6 +459,14 @@ if [ "$ALL" = true ]; then
   fi
 fi
 
+if [ "$WITH_SERVER" = true ]; then
+  WITH_OLLAMA_REMOTE=true
+  if [ "$WITH_MAIL" = true ]; then
+    echo "Error: --mail (Mailpit) is not supported with --server (production)." >&2
+    exit 1
+  fi
+fi
+
 has_nvidia_runtime() {
   docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'
 }
@@ -471,12 +483,17 @@ fi
 CLASSIFIER_CUDA_BASE_IMAGE=nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04
 if [ "$WITH_CLASSIFIER_GPU" = true ] && [ "$WITH_NVIDIA" = true ]; then
   export CLASSIFIER_PYTHON_BASE_IMAGE="$CLASSIFIER_CUDA_BASE_IMAGE"
+  export CLASSIFIER_INSTALL_GPU_EXTRAS=1
 fi
 
 COMPOSE_FILES=(-f "docker-compose.yml")
 [ "$WITH_OBS" = true ]   && COMPOSE_FILES+=(-f "compose.obs.yml")
 COMPOSE_FILES+=(-f "compose.prod.yml")
-COMPOSE_FILES+=(-f "compose.prod-host-ports.yml")
+if [ "$WITH_SERVER" = true ]; then
+  COMPOSE_FILES+=(-f "compose.prod-server.yml")
+else
+  COMPOSE_FILES+=(-f "compose.prod-host-ports.yml")
+fi
 [ "$WITH_OBS" = true ] && [ "$WITH_OBS_PRIVATE" = true ] && COMPOSE_FILES+=(-f "compose.prod-obs.yml")
 if [ "$WITH_NVIDIA" = true ] && [ "$WITH_CLASSIFIER_GPU" = true ]; then
   COMPOSE_FILES+=(-f "compose.gpu.yml")
@@ -534,14 +551,14 @@ fi
 
 if [ "$CMD" = config ]; then
   docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" config -q
-  echo "Prod compose config OK (obs=$WITH_OBS, obs_private=$WITH_OBS_PRIVATE, ollama_gpu=$WITH_GPU, ollama_remote=$WITH_OLLAMA_REMOTE, logs=$WITH_LOGS, infra=$WITH_INFRA, mail=$WITH_MAIL)."
+  echo "Prod compose config OK (server=$WITH_SERVER, obs=$WITH_OBS, obs_private=$WITH_OBS_PRIVATE, ollama_gpu=$WITH_GPU, ollama_remote=$WITH_OLLAMA_REMOTE, logs=$WITH_LOGS, infra=$WITH_INFRA, mail=$WITH_MAIL)."
   exit 0
 fi
 
 maybe_run_env_setup up
 docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" up -d
 
-echo "Prod local started (obs=$WITH_OBS, obs_private=$WITH_OBS_PRIVATE, ollama_gpu=$WITH_GPU, ollama_remote=$WITH_OLLAMA_REMOTE, logs=$WITH_LOGS, infra=$WITH_INFRA, mail=$WITH_MAIL)."
+echo "Prod started (server=$WITH_SERVER, obs=$WITH_OBS, obs_private=$WITH_OBS_PRIVATE, ollama_gpu=$WITH_GPU, ollama_remote=$WITH_OLLAMA_REMOTE, logs=$WITH_LOGS, infra=$WITH_INFRA, mail=$WITH_MAIL)."
 echo "Reverse-proxy HTTP: http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/ (set REVERSE_PROXY_HTTP_PORT if 80 is not free)."
 if [ "$WITH_MAIL" = true ]; then
   echo "Mailpit UI:         http://127.0.0.1:${MAILPIT_HTTP_PORT:-8025}/"

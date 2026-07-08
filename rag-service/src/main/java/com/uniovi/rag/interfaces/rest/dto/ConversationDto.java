@@ -12,7 +12,7 @@ public record ConversationDto(
         UUID presetId,
         List<String> documentFilter,
         Map<String, Object> runtimeOverride,
-        /** Preset id shown to clients when {@link #presetId} is null — deterministic default ({@code Demo_Best}). */
+        /** Preset id shown to clients when {@link #presetId} is null - deterministic default ({@code Demo_Best}). */
         UUID effectivePresetId,
         /** Resolved runtime projection after create/preview when computed (empty map otherwise). */
         Map<String, Object> effectiveRuntimePreview,

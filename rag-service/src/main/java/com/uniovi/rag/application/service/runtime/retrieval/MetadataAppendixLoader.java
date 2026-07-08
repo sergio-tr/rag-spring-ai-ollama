@@ -51,13 +51,14 @@ public class MetadataAppendixLoader {
         List<String> payloads =
                 namedJdbc.query(
                         """
-                        SELECT CAST(da.payload_jsonb AS TEXT)
+                        SELECT DISTINCT ON (kd.id) CAST(da.payload_jsonb AS TEXT)
                         FROM document_artifact da
                         JOIN project_documents kd ON kd.id = da.document_id
                         WHERE da.artifact_type = CAST(:artifactType AS VARCHAR)
                           AND kd.project_id = :projectId
                           AND kd.id IN (:docIds)
                           AND kd.current_index_snapshot_id IN (:snapshotIds)
+                        ORDER BY kd.id, da.created_at DESC
                         """,
                         p,
                         (rs, rowNum) -> rs.getString(1));

@@ -6,7 +6,6 @@ import io
 
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -19,6 +18,7 @@ from app.evaluation.result import EvaluationResult
 from app.inference.model_loader import ModelLoader
 from app.query_type_contract import canonical_class_order
 from app.registry.model_registry import ModelRegistry
+from app.tensorflow_support import require_tensorflow
 
 
 class EvaluationPipeline(Loggable):
@@ -47,8 +47,8 @@ class EvaluationPipeline(Loggable):
         """
         if not self._loader.is_loaded(model_id):
             self._loader.load_by_id(model_id)
-        model = self._loader.get_model(model_id)
-        model_class_names = self._loader.get_class_names(model_id)
+        loaded = self._loader.get_loaded_model(model_id)
+        model_class_names = loaded.class_names
         class_names = canonical_class_order(model_class_names)
         canon_idx = {name: i for i, name in enumerate(class_names)}
 
@@ -68,10 +68,24 @@ class EvaluationPipeline(Loggable):
                 "Ensure QueryType values match the model labels."
             )
 
-        y_pred_probs = model.predict(tf.constant([str(x) for x in X]), verbose=0)
-        y_pred_model_idx = np.argmax(y_pred_probs, axis=1)
         y_true = np.array([canon_idx[c] for c in y_raw])
-        y_pred = np.array([canon_idx[model_class_names[int(i)]] for i in y_pred_model_idx])
+        if loaded.model_type == "sklearn":
+            from app.inference.sklearn_predict import predict_proba
+
+            pipe = loaded.artifact
+            clf_classes = list(pipe.named_steps["clf"].classes_)
+            class_to_canon = {str(label): canon_idx[str(label)] for label in clf_classes if str(label) in canon_idx}
+            y_pred = np.empty(len(X), dtype=int)
+            for i, text in enumerate(X):
+                probs = predict_proba(pipe, str(text))
+                best_local = int(np.argmax(probs))
+                label = str(clf_classes[best_local])
+                y_pred[i] = class_to_canon.get(label, canon_idx[model_class_names[0]])
+        else:
+            tf = require_tensorflow()
+            y_pred_probs = loaded.artifact.predict(tf.constant([str(x) for x in X]), verbose=0)
+            y_pred_model_idx = np.argmax(y_pred_probs, axis=1)
+            y_pred = np.array([canon_idx[model_class_names[int(i)]] for i in y_pred_model_idx])
 
         report = classification_report(
             y_true, y_pred, target_names=class_names, output_dict=True, zero_division=0

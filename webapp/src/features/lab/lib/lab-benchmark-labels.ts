@@ -1,4 +1,5 @@
 import { formatBenchmarkKindLabel } from "@/lib/product-copy";
+import { productPresetLabel, toProductPresetDisplayName } from "@/lib/product-preset-labels";
 
 /** Normalized display labels for LAB benchmark results, exports, and comparison tables. */
 
@@ -56,11 +57,18 @@ export function formatPresetDisplay(
   if (code === MISSING_METADATA_KEY) {
     return "";
   }
-  const label = (presetLabel ?? "").trim();
-  if (label && label !== code) {
-    return `${code} — ${label}`;
+  if (/^demo_/i.test(code)) {
+    return toProductPresetDisplayName(code);
   }
-  return code;
+  const functional = productPresetLabel(code);
+  if (functional && functional !== code) {
+    return functional;
+  }
+  const label = (presetLabel ?? "").trim();
+  if (label && label !== code && !/^P\d+([_\s]|$)/i.test(label)) {
+    return label;
+  }
+  return functional || code;
 }
 
 export function formatGroupLabel(
@@ -132,7 +140,7 @@ export function formatMetricCell(
 ): { display: string; title: string | undefined } {
   if (value == null || isNotAvailable(value)) {
     const reasonKey = metricUnavailableReasonKey(metricKey, benchmarkKind, outcome);
-    return { display: "—", title: t(reasonKey) };
+    return { display: "-", title: t(reasonKey) };
   }
   if (typeof value === "number" && Number.isFinite(value)) {
     return { display: value.toFixed(3), title: undefined };
@@ -140,7 +148,7 @@ export function formatMetricCell(
   const text = String(value).trim();
   if (!text || isNotAvailable(text)) {
     const reasonKey = metricUnavailableReasonKey(metricKey, benchmarkKind, outcome);
-    return { display: "—", title: t(reasonKey) };
+    return { display: "-", title: t(reasonKey) };
   }
   return { display: text, title: undefined };
 }
@@ -165,7 +173,20 @@ export type ComparisonRow = {
   meanExactMatch?: number | null;
   meanSemanticScore?: number | null;
   meanRecallAt1?: number | null;
+  meanRecallAt3?: number | null;
+  meanRecallAt5?: number | null;
+  meanMrr?: number | null;
+  meanNdcgAt5?: number | null;
+  meanCorrectness?: number | null;
+  meanFaithfulness?: number | null;
+  meanHallucinationRate?: number | null;
+  containsExpectedAnswerRate?: number | null;
   meanLatencyMs?: number | null;
+  p95LatencyMs?: number | null;
+  errorCount?: number;
+  timeoutCount?: number;
+  emptyContentCount?: number;
+  noContextCount?: number;
   scoreGlobal?: number | null;
   scoreAnswerable?: number | null;
   benchmarkSupportStatus?: string;
@@ -181,14 +202,14 @@ const INTERNAL_STATUS_LABELS: Record<string, string> = {
 
 export function formatComparisonScore(value: unknown): string {
   if (value == null || value === NOT_AVAILABLE || value === "NOT_AVAILABLE") {
-    return "—";
+    return "-";
   }
   if (typeof value === "number" && Number.isFinite(value)) {
     return value.toFixed(3);
   }
   const text = String(value).trim();
   if (!text || text === NOT_AVAILABLE) {
-    return "—";
+    return "-";
   }
   return text;
 }
@@ -235,6 +256,14 @@ export function resolvePresetKeyFromComparisonRow(row: ComparisonRow): string {
   return presetMatch?.[1]?.toUpperCase() ?? "";
 }
 
+function comparisonAxisKind(axis: string | null | undefined): ComparisonAxis {
+  const normalized = (axis ?? "").trim().toUpperCase();
+  if (normalized === "EMBEDDING_MODEL" || normalized === "EMBEDDING") return "EMBEDDING_MODEL";
+  if (normalized === "LLM_MODEL" || normalized === "LLM") return "LLM_MODEL";
+  if (isPresetComparisonAxis(axis)) return "PRESET_CODE";
+  return "UNKNOWN";
+}
+
 export function resolveComparisonRowLabel(
   row: ComparisonRow,
   comparisonAxis: string | null | undefined,
@@ -249,15 +278,11 @@ export function resolveComparisonRowLabel(
   const presetKey = resolvePresetKeyFromComparisonRow(row);
   if (isPresetComparisonAxis(comparisonAxis)) {
     if (presetLabel) {
-      return presetLabel.includes("—") ? presetLabel : formatPresetDisplay(presetKey, presetLabel);
+      return presetLabel.includes("-") ? presetLabel : formatPresetDisplay(presetKey, presetLabel);
     }
     if (presetKey) {
       return presetKey;
     }
-  }
-  const modelLabel = typeof r.modelLabel === "string" ? r.modelLabel.trim() : "";
-  if (modelLabel) {
-    return modelLabel;
   }
   const axisValue =
     typeof r.axisValue === "string"
@@ -265,6 +290,23 @@ export function resolveComparisonRowLabel(
       : typeof r.groupValue === "string"
         ? r.groupValue.trim()
         : "";
+  const axisKind = comparisonAxisKind(comparisonAxis);
+  if (axisKind === "EMBEDDING_MODEL") {
+    const embeddingModelId =
+      typeof r.embeddingModelId === "string" && r.embeddingModelId.trim()
+        ? r.embeddingModelId.trim()
+        : axisValue;
+    if (embeddingModelId) return embeddingModelId;
+  }
+  if (axisKind === "LLM_MODEL") {
+    const llmModelId =
+      typeof r.llmModelId === "string" && r.llmModelId.trim() ? r.llmModelId.trim() : axisValue;
+    if (llmModelId) return llmModelId;
+  }
+  const modelLabel = typeof r.modelLabel === "string" ? r.modelLabel.trim() : "";
+  if (modelLabel) {
+    return modelLabel;
+  }
   return axisValue;
 }
 

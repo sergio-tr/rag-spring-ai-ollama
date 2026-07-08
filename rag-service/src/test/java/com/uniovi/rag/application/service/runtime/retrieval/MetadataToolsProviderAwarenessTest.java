@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -13,12 +14,14 @@ import com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityS
 import com.uniovi.rag.application.service.knowledge.IndexProfileJsonSupport;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.application.service.llm.ProviderAwareEmbeddingService;
+import com.uniovi.rag.application.service.llm.catalog.EmbeddingModelCatalogResolver;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
+import com.uniovi.rag.domain.runtime.RagSnapshotContextHolder;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import java.util.LinkedHashMap;
@@ -45,6 +48,7 @@ class MetadataToolsProviderAwarenessTest {
     @Mock private KnowledgeIndexSnapshotRepository snapshotRepository;
     @Mock private KnowledgeSnapshotService knowledgeSnapshotService;
     @Mock private ContextRetriever delegateRetriever;
+    @Mock private EmbeddingModelCatalogResolver embeddingModelCatalogResolver;
 
     private EmbeddingIndexCompatibilityService compatibilityService;
     private ProviderAwareContextRetriever providerAwareRetriever;
@@ -53,8 +57,18 @@ class MetadataToolsProviderAwarenessTest {
     void setUp() {
         compatibilityService =
                 new EmbeddingIndexCompatibilityService(
-                        providerAwareEmbeddingService, snapshotRepository, knowledgeSnapshotService);
+                        providerAwareEmbeddingService,
+                        snapshotRepository,
+                        knowledgeSnapshotService,
+                        embeddingModelCatalogResolver);
         providerAwareRetriever = new ProviderAwareContextRetriever(delegateRetriever, compatibilityService);
+        lenient()
+                .when(providerAwareEmbeddingService.effectiveEmbeddingModelId(any()))
+                .thenAnswer(
+                        invocation -> {
+                            String model = invocation.getArgument(0);
+                            return model != null ? model : openAiConfig().embeddingModel();
+                        });
         RagExecutionContextHolder.set(
                 new RagExecutionContext(
                         null,
@@ -68,6 +82,7 @@ class MetadataToolsProviderAwarenessTest {
     @AfterEach
     void tearDown() {
         RagExecutionContextHolder.clear();
+        RagSnapshotContextHolder.clear();
     }
 
     @Test
@@ -100,6 +115,24 @@ class MetadataToolsProviderAwarenessTest {
         assertEquals(1, docs.size());
         verify(knowledgeSnapshotService).findActiveProjectSnapshot(PROJECT_ID);
         verify(delegateRetriever).retrieveWithMetadataFilters("acta", filters);
+    }
+
+    @Test
+    void metadataToolUsesBoundEvaluationSnapshotWhenDeploymentDefaultDiffers() {
+        ResolvedLlmConfig openAi = openAiConfig();
+        when(providerAwareEmbeddingService.resolveEffectiveConfig()).thenReturn(openAi);
+        UUID evaluationSnapshotId = UUID.fromString("3bc97dd6-908c-4828-b777-3f81cd3e312f");
+        KnowledgeIndexSnapshotEntity evaluationSnapshot =
+                snapshotWith(LlmProvider.OPENAI_COMPATIBLE, "bge-m3");
+        when(snapshotRepository.findById(evaluationSnapshotId)).thenReturn(Optional.of(evaluationSnapshot));
+        RagSnapshotContextHolder.set(List.of(evaluationSnapshotId));
+        when(delegateRetriever.retrieve("ascensor")).thenReturn(List.of(new Document("doc")));
+
+        List<Document> docs = providerAwareRetriever.retrieve("ascensor");
+
+        assertEquals(1, docs.size());
+        verify(delegateRetriever).retrieve("ascensor");
+        verify(knowledgeSnapshotService, never()).findActiveProjectSnapshot(any());
     }
 
     @Test

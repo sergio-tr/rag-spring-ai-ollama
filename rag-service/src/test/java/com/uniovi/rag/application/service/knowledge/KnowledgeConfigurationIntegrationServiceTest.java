@@ -14,6 +14,7 @@ import com.uniovi.rag.domain.knowledge.KnowledgeBuildProjection;
 import com.uniovi.rag.domain.knowledge.KnowledgeOperationKind;
 import com.uniovi.rag.domain.knowledge.KnowledgeReindexKind;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
+import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import org.junit.jupiter.api.Test;
@@ -30,6 +31,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -59,7 +61,7 @@ class KnowledgeConfigurationIntegrationServiceTest {
     private KnowledgeConfigurationIntegrationService knowledgeConfigurationIntegrationService;
 
     @Test
-    void computeReindexDecision_metadataRequiredButSnapshotWithoutMetadata_forcesHardRebuild() {
+    void computeReindexDecision_metadataRequiredButSnapshotWithoutMetadata_doesNotAutoUpgrade() {
         UUID projectId = UUID.randomUUID();
         KnowledgeBuildProjection projection =
                 new KnowledgeBuildProjection(
@@ -67,7 +69,7 @@ class KnowledgeConfigurationIntegrationServiceTest {
                         MaterializationStrategy.CHUNK_LEVEL,
                         400,
                         0,
-                        "embed",
+                        "mxbai-embed-large:latest",
                         true,
                         ReindexImpact.none(),
                         null,
@@ -83,16 +85,23 @@ class KnowledgeConfigurationIntegrationServiceTest {
                         "mxbai-embed-large:latest",
                         "chunkMaxChars",
                         400));
+        snap.setIndexProfileHash(
+                ProjectIndexProfile.computeProfileHash(
+                        MaterializationStrategy.CHUNK_LEVEL,
+                        false,
+                        "",
+                        "mxbai-embed-large:latest",
+                        400,
+                        0));
         when(knowledgeSnapshotService.findActiveProjectSnapshot(projectId)).thenReturn(Optional.of(snap));
-        when(knowledgePipelineOrchestrator.hasReadyDocumentsInScope(
-                        projectId, CorpusScope.PROJECT_SHARED, null))
-                .thenReturn(true);
+        when(knowledgeSnapshotService.findCompatibleProjectSnapshot(eq(projectId), any()))
+                .thenReturn(Optional.of(snap));
 
         var decision =
                 knowledgeConfigurationIntegrationService.computeReindexDecision(
                         projection, CorpusScope.PROJECT_SHARED, null, projectId);
 
-        assertThat(decision.kind()).isEqualTo(KnowledgeReindexKind.HARD_REBUILD);
+        assertThat(decision.kind()).isEqualTo(KnowledgeReindexKind.NO_OP);
     }
 
     @Test

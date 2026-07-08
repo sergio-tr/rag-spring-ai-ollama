@@ -15,6 +15,7 @@ public final class EvaluationWorkbook {
     private final List<CorpusDocument> corpusDocuments;
     private final List<ChunkRegistryEntry> chunkRegistry;
     private final List<LlmReaderQuestion> llmReaderQuestions;
+    private final List<LlmRoleEvalCase> llmRoleEvalCases;
     private final List<EmbeddingRetrievalQuery> embeddingRetrievalQueries;
     private final List<RagPresetQuestion> ragPresetQuestionsEnriched;
     private final List<ModelCandidate> llmCandidates;
@@ -31,6 +32,7 @@ public final class EvaluationWorkbook {
         this.corpusDocuments = List.copyOf(b.corpusDocuments);
         this.chunkRegistry = List.copyOf(b.chunkRegistry);
         this.llmReaderQuestions = List.copyOf(b.llmReaderQuestions);
+        this.llmRoleEvalCases = List.copyOf(b.llmRoleEvalCases);
         this.embeddingRetrievalQueries = List.copyOf(b.embeddingRetrievalQueries);
         this.ragPresetQuestionsEnriched = List.copyOf(b.ragPresetQuestionsEnriched);
         this.llmCandidates = List.copyOf(b.llmCandidates);
@@ -60,6 +62,10 @@ public final class EvaluationWorkbook {
 
     public List<LlmReaderQuestion> llmReaderQuestions() {
         return llmReaderQuestions;
+    }
+
+    public List<LlmRoleEvalCase> llmRoleEvalCases() {
+        return llmRoleEvalCases;
     }
 
     public List<EmbeddingRetrievalQuery> embeddingRetrievalQueries() {
@@ -108,6 +114,7 @@ public final class EvaluationWorkbook {
         private final List<CorpusDocument> corpusDocuments = new ArrayList<>();
         private final List<ChunkRegistryEntry> chunkRegistry = new ArrayList<>();
         private final List<LlmReaderQuestion> llmReaderQuestions = new ArrayList<>();
+        private final List<LlmRoleEvalCase> llmRoleEvalCases = new ArrayList<>();
         private final List<EmbeddingRetrievalQuery> embeddingRetrievalQueries = new ArrayList<>();
         private final List<RagPresetQuestion> ragPresetQuestionsEnriched = new ArrayList<>();
         private final List<ModelCandidate> llmCandidates = new ArrayList<>();
@@ -145,6 +152,12 @@ public final class EvaluationWorkbook {
         public Builder llmReaderQuestions(List<LlmReaderQuestion> v) {
             llmReaderQuestions.clear();
             llmReaderQuestions.addAll(v);
+            return this;
+        }
+
+        public Builder llmRoleEvalCases(List<LlmRoleEvalCase> v) {
+            llmRoleEvalCases.clear();
+            llmRoleEvalCases.addAll(v);
             return this;
         }
 

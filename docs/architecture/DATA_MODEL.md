@@ -3,7 +3,7 @@
 **Source of truth:** Flyway migrations under `rag-service/src/main/resources/db/migration/`.  
 This page is the **compact logical + physical reference** for the platform (figures; verify rare tables with SQL if needed).
 
-**Operators:** database image and init layout — [../../db/README.md](../../db/README.md). **Domain concepts:** [../domain/conceptual-model.md](../domain/conceptual-model.md). **Lab vs production promotion:** [ADR 0001](../adr/0001-lab-promotion-modes.md). **Async Lab jobs and evaluation scope:** [ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md), [integration-flows.md](../architecture/integration-flows.md).
+**Operators:** database image and init layout - [../../db/README.md](../../db/README.md). **Domain concepts:** [../domain/conceptual-model.md](../domain/conceptual-model.md). **Lab vs production promotion:** [ADR 0001](../adr/0001-lab-promotion-modes.md). **Async Lab jobs and evaluation scope:** [ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md), [integration-flows.md](../architecture/integration-flows.md).
 
 ---
 
@@ -32,7 +32,7 @@ erDiagram
 
 ---
 
-## 2. Entity-relationship (Mermaid — core + config)
+## 2. Entity-relationship (Mermaid - core + config)
 
 ```mermaid
 erDiagram
@@ -134,7 +134,7 @@ erDiagram
 
 **Tables:** `evaluation_dataset`, `evaluation_run`, `evaluation_result` (V9); `classifier_model` (V10); `allowed_model` (V8); `async_task` (V17). Nullable `project_id` on `evaluation_run` and `async_task`: [V19](../../rag-service/src/main/resources/db/migration/V19__project_scope_evaluation_and_async_task.sql); see [ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md).
 
-**`classifier_model` (V10)** matches the classifier microservice contract: `owner_id`, optional `dataset_id` / `dataset_sha`, `hyperparams` JSONB, scalar metrics (`accuracy`, `f1_macro`), `artifact_path` (on-disk or shared storage), `is_active`, `passes_gate`, `trained_at`, `status` (`TRAINING` \| `READY` \| `ERROR`). Training/evaluation **jobs** are tracked in `async_task`; this table is the **catalog row** for a trained artifact. For RAG runtime, **`artifact_path` stores the classifier-service inference tag** (same string as `modelId` in train/eval JSON responses). **Explicit activation** (Lab/API) merges `classifierModelId` into the **project** `rag_configuration` JSON with that tag (ADR 0001 — never silent). Details: [classifier-service README](../../classifier-service/README.md), Lab flows in [integration-flows.md](../architecture/integration-flows.md).
+**`classifier_model` (V10)** matches the classifier microservice contract: `owner_id`, optional `dataset_id` / `dataset_sha`, `hyperparams` JSONB, scalar metrics (`accuracy`, `f1_macro`), `artifact_path` (on-disk or shared storage), `is_active`, `passes_gate`, `trained_at`, `status` (`TRAINING` \| `READY` \| `ERROR`). Training/evaluation **jobs** are tracked in `async_task`; this table is the **catalog row** for a trained artifact. For RAG runtime, **`artifact_path` stores the classifier-service inference tag** (same string as `modelId` in train/eval JSON responses). **Explicit activation** (Lab/API) merges `classifierModelId` into the **project** `rag_configuration` JSON with that tag (ADR 0001 - never silent). Details: [classifier-service README](../../classifier-service/README.md), Lab flows in [integration-flows.md](../architecture/integration-flows.md).
 
 **Classifier ML runtime (HTTP, on-disk weights):** see [classifier-service README](../../classifier-service/README.md).
 
@@ -166,8 +166,8 @@ erDiagram
 | `async_task` | `task_type`, `status`, progress text | `request_payload`, `result_json` |
 | `resolved_config_snapshot` | `created_at`, `effective_system_prompt`, `config_hash` | `payload_jsonb`, `capability_set_jsonb`, `compatibility_result_jsonb`, `reindex_impact_jsonb`, `system_prompt_layers_jsonb`, `provenance_jsonb` (see [Section 6.1](DATA_MODEL.md#dm-s6-1)) |
 | `runtime_execution_trace` | linkage (`user_id`, `project_id`, optional `conversation_id`/`message_id`), `correlation_id`, optional `resolved_config_snapshot_id`/`config_hash`, extracted summary columns (memory/routing/tool/FC/advisor/judge/clarification), `schema_version`, `created_at` | `execution_trace_jsonb` (bounded `ExecutionTrace` projection), `stages_jsonb` (bounded `ExecutionStageTrace` list) |
-| `runtime_trace_regression_suite_definition`, `runtime_trace_regression_suite_definition_entry`, `runtime_trace_regression_suite_definition_entry_trace` | **P33:** per-user named suite definitions (`UNIQUE (user_id, name)`), ordered entries (`entry_kind` **BY_TRACE_IDS** / **BY_CONVERSATION**), child rows for trace ids **only** for **BY_TRACE_IDS** | — (no JSONB / array column for trace ids) |
-| `runtime_trace_regression_suite_run`, `runtime_trace_regression_suite_run_entry` | **P41:** per-user suite **run** header + summary counters + one row per executed entry (bounded scalars only); **`definition_id`** opaque UUID when `source_type = SAVED_DEFINITION` (**no FK** to definitions) | — (no JSONB / arrays / trace blobs) |
+| `runtime_trace_regression_suite_definition`, `runtime_trace_regression_suite_definition_entry`, `runtime_trace_regression_suite_definition_entry_trace` | **P33:** per-user named suite definitions (`UNIQUE (user_id, name)`), ordered entries (`entry_kind` **BY_TRACE_IDS** / **BY_CONVERSATION**), child rows for trace ids **only** for **BY_TRACE_IDS** | - (no JSONB / array column for trace ids) |
+| `runtime_trace_regression_suite_run`, `runtime_trace_regression_suite_run_entry` | **P41:** per-user suite **run** header + summary counters + one row per executed entry (bounded scalars only); **`definition_id`** opaque UUID when `source_type = SAVED_DEFINITION` (**no FK** to definitions) | - (no JSONB / arrays / trace blobs) |
 | `knowledge_index_snapshot`, `knowledge_snapshot_document`, `document_artifact`, `reindex_event`; extended `project_documents` | scope, snapshot FK, storage columns, `requires_reindex` | Artifact payloads (`schemaVersion`); METADATA holds structured-search projection when applicable ([Section 6.2](DATA_MODEL.md#dm-s6-2)) |
 
 **Trade-off:** JSON stays flexible; heavy reporting may need GIN indexes or extracted columns later.
@@ -223,11 +223,11 @@ This table stores a **reproducible, append-only** persisted trace artefact for o
 
 <a id="dm-s6-4"></a>
 
-### 6.4 `runtime_trace_regression_suite_*` (saved regression suite definitions — P33)
+### 6.4 `runtime_trace_regression_suite_*` (saved regression suite definitions - P33)
 
 **Migration:** [V32](../../rag-service/src/main/resources/db/migration/V32__runtime_trace_regression_suite_definition.sql).
 
-These tables persist **reusable suite definitions** (metadata + ordered entries). They do **not** store suite **execution** results, export blobs, or run history. **`RuntimeTraceRegressionSuiteDefinitionService`** (`application.service.runtime.traceregressionsuitedefinition`) is the **only** application owner for writes/reads; it can **materialize** a **`RuntimeTraceRegressionSuiteRequest`** (P30 shape) for the owning user — **read/map only**, without calling **`RuntimeTraceRegressionSuiteService#execute`**. P33 does **not** add HTTP routes for definitions (future phases may add REST on top of this service).
+These tables persist **reusable suite definitions** (metadata + ordered entries). They do **not** store suite **execution** results, export blobs, or run history. **`RuntimeTraceRegressionSuiteDefinitionService`** (`application.service.runtime.traceregressionsuitedefinition`) is the **only** application owner for writes/reads; it can **materialize** a **`RuntimeTraceRegressionSuiteRequest`** (P30 shape) for the owning user - **read/map only**, without calling **`RuntimeTraceRegressionSuiteService#execute`**. P33 does **not** add HTTP routes for definitions (future phases may add REST on top of this service).
 
 | Table | Role |
 | ------- | ------ |
@@ -237,7 +237,7 @@ These tables persist **reusable suite definitions** (metadata + ordered entries)
 
 <a id="dm-s6-5"></a>
 
-### 6.5 `runtime_trace_regression_suite_run*` (regression suite run snapshots — P41)
+### 6.5 `runtime_trace_regression_suite_run*` (regression suite run snapshots - P41)
 
 **Migration:** [V33](../../rag-service/src/main/resources/db/migration/V33__runtime_trace_regression_suite_run.sql).
 
@@ -366,7 +366,7 @@ Horizontal scaling of workers: external queue or DB lease (outside this relation
 | -------- | ------------------------------------------ | -------------- |
 | **Purpose** | Durable **batch evaluation** over an uploaded **dataset**: one run row drives many per-question `evaluation_result` rows (historical reporting, comparisons). | **HTTP 202 async jobs** for Lab (and similar): LLM/RAG eval shortcuts, classifier train/eval, Ollama pull; status and summary JSON in-table. |
 | **Lifecycle** | Tied to `evaluation_dataset`; progress fields; typically long-running batch in product sense. | `QUEUED` → … → terminal; polled via `/lab/jobs/{id}` or SSE (`/events`). |
-| **API mapping** | Product/evaluation flows that upload datasets and record structured evals (“runs” in the batch sense — see [ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md)). | Lab endpoints under `…/lab/…` returning **202** + job id; optional `projectId` query param persists `project_id` when the user owns the project ([ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md)). |
+| **API mapping** | Product/evaluation flows that upload datasets and record structured evals (“runs” in the batch sense - see [ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md)). | Lab endpoints under `…/lab/…` returning **202** + job id; optional `projectId` query param persists `project_id` when the user owns the project ([ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md)). |
 | **Project scope** | Optional `project_id` (V19) when the product attaches a project to a batch run. | Optional `project_id` (V19) for traceability; omitted ⇒ global/user-scoped job. |
 
 Do **not** conflate the two: a Lab “eval LLM” `async_task` is **not** an `evaluation_run` row unless a future product flow explicitly creates both.
@@ -395,7 +395,7 @@ Do **not** conflate the two: a Lab “eval LLM” `async_task` is **not** an `ev
 ## 13. Open questions (remaining product/schema)
 
 1. Single active `classifier_model` per user, per project, or global (ADMIN)?
-2. Conversation-level config: new `rag_configuration` level vs JSON-only on `conversations` (product design choice; not fixed in this schema — see [conceptual-model.md](../domain/conceptual-model.md)).
+2. Conversation-level config: new `rag_configuration` level vs JSON-only on `conversations` (product design choice; not fixed in this schema - see [conceptual-model.md](../domain/conceptual-model.md)).
 
 **Resolved (see [ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md)):** nullable FK `project_id` on `evaluation_run` and `async_task`; dataset dedup policy `(owner_id, sha256)` at application level.
 

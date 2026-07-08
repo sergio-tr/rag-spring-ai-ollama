@@ -12,7 +12,7 @@ This file defines **enforceable** CI policy for **protected branches** (`dev`, `
 | `push` | `main`, `master` only | **Post-merge** on the default line: re-runs the same DAG for the merge commit. **Required** so [`deploy.yml`](../workflows/deploy.yml) and any **SHA** gate can find a successful `CI` run for `head_sha` after a merge. |
 | (not used) | `dev` on `push` | **Omitted** on purpose: with an open PR `dev` → `main`, a push to `dev` would fire **both** `push` and `pull_request` and duplicate the full DAG for the same commit. Use **PRs** for pre-merge coverage on `dev`. |
 
-**Direct `git push` to `dev` without a PR** does not run `ci.yml`. Use a PR to `dev` (or a documented optional `workflow_dispatch` if the team adds one — not `push`+`pull_request` on the same branch).
+**Direct `git push` to `dev` without a PR** does not run `ci.yml`. Use a PR to `dev` (or a documented optional `workflow_dispatch` if the team adds one - not `push`+`pull_request` on the same branch).
 
 ## Required status checks for `dev` branch protection
 
@@ -25,7 +25,7 @@ Notes:
 ## Required status checks for `main` branch protection
 
 - **Required (blocking)**: `CI / CI pipeline` (same check name as for `dev`).
-- **Optional (additional)**: `Build (no tests) / Backend (Java) Build` from [`build.yml`](../workflows/build.yml) — fast compile-only; **not** a substitute for the full `CI` DAG. Enable only if the team wants the extra signal; the **primary** gate remains `CI / CI pipeline`.
+- **Optional (additional)**: `Build (no tests) / Backend (Java) Build` from [`build.yml`](../workflows/build.yml) - fast compile-only; **not** a substitute for the full `CI` DAG. Enable only if the team wants the extra signal; the **primary** gate remains `CI / CI pipeline`.
 
 ## Required lanes on PR to `dev`
 
@@ -61,7 +61,7 @@ Notes:
 
 ## Manual deploy and commit SHA
 
-[`deploy.yml`](../workflows/deploy.yml) runs on `workflow_dispatch` and **gates** on a **completed successful** run of [`.github/workflows/ci.yml`](../workflows/ci.yml) whose **`head_sha`** equals the commit being deployed. After a normal **merge to `main`**, the post-merge **`push`** triggers **`CI`** for the merge commit — that run satisfies the gate. **Do not** remove `push` on `main`/`master` from `ci.yml` without updating this contract.
+[`deploy.yml`](../workflows/deploy.yml) runs on `workflow_dispatch` and **gates** on a **completed successful** run of [`.github/workflows/ci.yml`](../workflows/ci.yml) whose **`head_sha`** equals the commit being deployed. After a normal **merge to `main`**, the post-merge **`push`** triggers **`CI`** for the merge commit - that run satisfies the gate. **Do not** remove `push` on `main`/`master` from `ci.yml` without updating this contract.
 
 ## Mandatory failure artifacts (minimum)
 

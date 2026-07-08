@@ -137,6 +137,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
 
         String answer = generateBooleanAnswerWithLLM(query, evidence, relevantMinutes.size());
         log().info("Generated answer for query: {} with {} evidence pieces", query, evidence.size());
+        publishMatchedMinutesContext(relevantMinutes, true);
         return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
@@ -771,13 +772,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
                 """, query, keyword, context.toString(), KEYWORD_VIGILANCIA);
             
             try {
-                String result = chatClient
-                        .prompt()
-                        .user(prompt)
-                        .call()
-                        .content()
-                        .strip()
-                        .toUpperCase();
+                String result = getLLMResponseCached("metadata-boolean-evidence", prompt).toUpperCase();
                 
                 // Validate response (YES/NO)
                 boolean isValid = result.contains("YES");

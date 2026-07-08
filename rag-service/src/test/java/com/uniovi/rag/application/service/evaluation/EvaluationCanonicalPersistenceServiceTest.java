@@ -74,7 +74,7 @@ class EvaluationCanonicalPersistenceServiceTest {
                                 "presetKey",
                                 "P3",
                                 "presetLabel",
-                                "P3 — Chunk dense",
+                                "P3 - Chunk dense",
                                 "comparisonAxis",
                                 "PRESET"));
 
@@ -89,7 +89,7 @@ class EvaluationCanonicalPersistenceServiceTest {
         verify(run).setAggregatesJson(agg.capture());
         assertThat(agg.getValue())
                 .containsEntry("presetKey", "P3")
-                .containsEntry("presetLabel", "P3 — Chunk dense")
+                .containsEntry("presetLabel", "P3 - Chunk dense")
                 .containsEntry("comparisonAxis", "PRESET")
                 .containsEntry("executed", 2);
     }

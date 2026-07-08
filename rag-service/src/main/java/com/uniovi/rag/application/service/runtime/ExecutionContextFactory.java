@@ -1,12 +1,14 @@
 package com.uniovi.rag.application.service.runtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.application.service.model.ModelGovernanceService;
 import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationBootstrap;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationStateResolver;
+import com.uniovi.rag.application.service.runtime.memory.ConversationHistoryLoader;
 import com.uniovi.rag.application.service.runtime.memory.ConversationMemoryStrategy;
-import com.uniovi.rag.domain.config.EffectiveModelPolicy;
+import com.uniovi.rag.application.service.runtime.memory.ConversationFollowUpResolver;
+import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
@@ -16,6 +18,7 @@ import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryExecutionResult;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
+import com.uniovi.rag.domain.runtime.memory.ConversationMemoryTurn;
 import com.uniovi.rag.domain.runtime.reasoning.StructuredAnswerPlan;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
@@ -24,6 +27,8 @@ import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
 import com.uniovi.rag.application.service.runtime.config.MaterializationAwareSnapshotResolver;
 import com.uniovi.rag.application.service.config.ChatScopedRagConfigResolver;
+import com.uniovi.rag.domain.config.RetrievalOverrideModeSupport;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalSourceResolutionScope;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.exception.llm.LlmSafeOperationLogger;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
@@ -51,27 +56,30 @@ public class ExecutionContextFactory {
     private final RuntimeConfigResolutionService runtimeConfigResolutionService;
     private final KnowledgeRuntimeSnapshotSelector knowledgeRuntimeSnapshotSelector;
     private final ChatScopedRagConfigResolver chatScopedRagConfigResolver;
-    private final ModelCatalogPort modelCatalogPort;
+    private final ModelGovernanceService modelGovernanceService;
     private final Tracer tracer;
     private final ClarificationStateResolver clarificationStateResolver;
     private final ConversationMemoryStrategy conversationMemoryStrategy;
+    private final ConversationHistoryLoader conversationHistoryLoader;
     private final ResolvedLlmConfigResolver resolvedLlmConfigResolver;
 
     public ExecutionContextFactory(
             RuntimeConfigResolutionService runtimeConfigResolutionService,
             KnowledgeRuntimeSnapshotSelector knowledgeRuntimeSnapshotSelector,
             ChatScopedRagConfigResolver chatScopedRagConfigResolver,
-            ModelCatalogPort modelCatalogPort,
+            ModelGovernanceService modelGovernanceService,
             ClarificationStateResolver clarificationStateResolver,
             ConversationMemoryStrategy conversationMemoryStrategy,
+            ConversationHistoryLoader conversationHistoryLoader,
             ResolvedLlmConfigResolver resolvedLlmConfigResolver,
             @Autowired(required = false) Tracer tracer) {
         this.runtimeConfigResolutionService = runtimeConfigResolutionService;
         this.knowledgeRuntimeSnapshotSelector = knowledgeRuntimeSnapshotSelector;
         this.chatScopedRagConfigResolver = chatScopedRagConfigResolver;
-        this.modelCatalogPort = modelCatalogPort;
+        this.modelGovernanceService = modelGovernanceService;
         this.clarificationStateResolver = clarificationStateResolver;
         this.conversationMemoryStrategy = conversationMemoryStrategy;
+        this.conversationHistoryLoader = conversationHistoryLoader;
         this.resolvedLlmConfigResolver = resolvedLlmConfigResolver;
         this.tracer = tracer;
     }
@@ -98,14 +106,15 @@ public class ExecutionContextFactory {
         String correlationId =
                 Optional.ofNullable(TraceMdcBridge.currentCorrelationTraceId(tracer))
                         .orElseGet(() -> UUID.randomUUID().toString());
-        Optional<String> model = validateAndNormalizeChatModel(chatModelOverride);
         JsonNode merged =
                 conversationId != null
                         ? chatScopedRagConfigResolver.mergedConversationConfigAsJson(conversationId)
                         : null;
+        RetrievalSourceResolutionScope.bind(RetrievalOverrideModeSupport.readMode(merged, null));
         ResolvedRuntimeConfig resolved =
                 runtimeConfigResolutionService.resolveForOrchestratedExecute(
                         userId, projectId, merged, correlationId);
+        Optional<String> model = validateAndNormalizeChatModel(userId, projectId, merged, chatModelOverride);
         Optional<UUID> presetId =
                 resolved.provenance() != null && resolved.provenance().presetId() != null
                         ? Optional.of(resolved.provenance().presetId())
@@ -136,12 +145,13 @@ public class ExecutionContextFactory {
         String correlationId =
                 Optional.ofNullable(TraceMdcBridge.currentCorrelationTraceId(tracer))
                         .orElseGet(() -> UUID.randomUUID().toString());
-        Optional<String> model = validateAndNormalizeChatModel(chatModelOverride);
         JsonNode benchmarkTerminal =
                 LabBenchmarkExecutionContext.currentTerminalOverride().orElse(null);
         LabBenchmarkExecutionContext.LabRuntimeContext labCtx =
                 LabBenchmarkExecutionContext.currentLabRuntimeContext().orElse(null);
         UUID projectId = labCtx != null ? labCtx.projectId() : null;
+        RetrievalSourceResolutionScope.bind(RetrievalOverrideModeSupport.readMode(benchmarkTerminal, null));
+        Optional<String> model = validateAndNormalizeChatModel(null, projectId, benchmarkTerminal, chatModelOverride);
         ResolvedRuntimeConfig resolved =
                 runtimeConfigResolutionService.resolveForOrchestratedExecute(
                         null, projectId, benchmarkTerminal, correlationId);
@@ -180,11 +190,11 @@ public class ExecutionContextFactory {
         String correlationId =
                 Optional.ofNullable(TraceMdcBridge.currentCorrelationTraceId(tracer))
                         .orElseGet(() -> UUID.randomUUID().toString());
-        Optional<String> model = validateAndNormalizeChatModel(chatModelOverride);
         JsonNode merged =
                 conversationId != null
                         ? chatScopedRagConfigResolver.mergedConversationConfigAsJson(conversationId)
                         : null;
+        Optional<String> model = validateAndNormalizeChatModel(userId, projectId, merged, chatModelOverride);
         ResolvedRuntimeConfig resolved =
                 runtimeConfigResolutionService.resolveForOrchestratedExecute(
                         userId, projectId, merged, correlationId);
@@ -290,7 +300,11 @@ public class ExecutionContextFactory {
                 false,
                 List.of());
 
-        ConversationMemoryExecutionResult mem = conversationMemoryStrategy.execute(base, preMemory);
+        List<ConversationMemoryTurn> eligibleHistory = conversationHistoryLoader.loadEligibleHistory(base);
+        String planningSeed =
+                ConversationFollowUpResolver.expand(eligibleHistory, uq).orElse(preMemory);
+        ConversationMemoryExecutionResult mem =
+                conversationMemoryStrategy.executeWithEligibleHistory(base, planningSeed, eligibleHistory);
         boolean attempted =
                 mem.outcome() != ConversationMemoryOutcome.DISABLED_BY_CONFIG
                         && mem.outcome() != ConversationMemoryOutcome.NO_CONVERSATION_SCOPE;
@@ -517,14 +531,16 @@ public class ExecutionContextFactory {
                 ctx.routingStageTraces());
     }
 
-    private Optional<String> validateAndNormalizeChatModel(String chatModelOverride) {
+    private Optional<String> validateAndNormalizeChatModel(
+            UUID userId, UUID projectId, JsonNode runtimeOverride, String chatModelOverride) {
         if (chatModelOverride == null || chatModelOverride.isBlank()) {
             return Optional.empty();
         }
         try {
-            return Optional.of(
-                    EffectiveModelPolicy.validateChatModelOverride(
-                            chatModelOverride, modelCatalogPort.allowedLlmNamesInGovernance()));
+            ResolvedLlmConfig config = resolvedLlmConfigResolver.resolve(userId, projectId, runtimeOverride);
+            LlmProvider provider = config.chatProvider() != null ? config.chatProvider() : LlmProvider.OLLAMA_NATIVE;
+            modelGovernanceService.assertChatModelAllowed(provider, chatModelOverride);
+            return Optional.of(chatModelOverride.trim());
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }

@@ -10,16 +10,26 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { modelRegistryQueryKey, useModelRegistryCheckMutation, useModelRegistryQuery } from "@/features/settings/hooks/use-model-registry";
+import { useMeSelectableLlmModels } from "@/features/chat/hooks/use-me-selectable-llm-models";
 import { apiFetch, apiProductPath } from "@/lib/api-client";
 import { pollLabJob } from "@/lib/async-task";
-import type { LabJobAcceptedDto, ModelRegistryItemDto } from "@/types/api";
+import type { LabJobAcceptedDto, LlmProvider, ModelRegistryItemDto } from "@/types/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
 
-function statusLabel(t: (key: string) => string, row: ModelRegistryItemDto, uiPulling: boolean): string {
+function statusLabel(
+  t: (key: string) => string,
+  row: ModelRegistryItemDto,
+  uiPulling: boolean,
+  effectiveProvider: LlmProvider | undefined,
+): string {
   if (uiPulling) return t("modelRegistryStatusPulling");
-  if (row.status === "AVAILABLE") return t("modelRegistryStatusAvailable");
+  if (row.status === "AVAILABLE") {
+    return effectiveProvider === "OPENAI_COMPATIBLE"
+      ? t("modelRegistryStatusConfigured")
+      : t("modelRegistryStatusAvailable");
+  }
   if (row.status === "MISSING") return t("modelRegistryStatusMissing");
   return t("modelRegistryStatusError");
 }
@@ -30,12 +40,16 @@ function ModelRow({
   onPull,
   onVerify,
   verifyPending,
+  showLocalActions,
+  effectiveProvider,
 }: Readonly<{
   row: ModelRegistryItemDto;
   pulling: boolean;
   onPull: (id: string) => void;
   onVerify: (id: string) => void;
   verifyPending: boolean;
+  showLocalActions: boolean;
+  effectiveProvider: LlmProvider | undefined;
 }>) {
   const t = useTranslations("Settings");
   const busy = pulling || verifyPending;
@@ -56,27 +70,31 @@ function ModelRow({
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         <Badge variant={badgeVariant}>
-          {statusLabel(t, row, pulling)}
+          {statusLabel(t, row, pulling, effectiveProvider)}
         </Badge>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          data-testid={`model-registry-verify-${row.modelId}`}
-          disabled={busy}
-          onClick={() => onVerify(row.modelId)}
-        >
-          {t("modelRegistryVerify")}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          data-testid={`model-registry-pull-${row.modelId}`}
-          disabled={busy || row.status === "AVAILABLE"}
-          onClick={() => onPull(row.modelId)}
-        >
-          {t("modelRegistryPull")}
-        </Button>
+        {showLocalActions ? (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              data-testid={`model-registry-verify-${row.modelId}`}
+              disabled={busy}
+              onClick={() => onVerify(row.modelId)}
+            >
+              {t("modelRegistryVerify")}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              data-testid={`model-registry-pull-${row.modelId}`}
+              disabled={busy || row.status === "AVAILABLE"}
+              onClick={() => onPull(row.modelId)}
+            >
+              {t("modelRegistryPull")}
+            </Button>
+          </>
+        ) : null}
       </div>
     </div>
   );
@@ -86,6 +104,12 @@ export function ProductModelRegistryCard() {
   const t = useTranslations("Settings");
   const qc = useQueryClient();
   const { data, isLoading, isError, error, refetch } = useModelRegistryQuery();
+  const selectableModelsQ = useMeSelectableLlmModels("CHAT");
+  const effectiveProvider = selectableModelsQ.data?.effectiveProvider;
+  const isRemoteProvider = effectiveProvider === "OPENAI_COMPATIBLE";
+  const showLocalActions = effectiveProvider === "OLLAMA_NATIVE";
+  const showModelServerUnreachable =
+    Boolean(data && !data.ollamaReachable) && effectiveProvider === "OLLAMA_NATIVE";
   const checkM = useModelRegistryCheckMutation();
   const [pullingId, setPullingId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -135,8 +159,12 @@ export function ProductModelRegistryCard() {
   return (
     <Card data-testid="model-registry-card">
       <CardHeader>
-        <CardTitle>{t("modelRegistryCardTitle")}</CardTitle>
-        <CardDescription>{t("modelRegistryCardDescription")}</CardDescription>
+        <CardTitle>
+          {isRemoteProvider ? t("modelRegistryCardTitleConfigured") : t("modelRegistryCardTitle")}
+        </CardTitle>
+        <CardDescription>
+          {isRemoteProvider ? t("modelRegistryCardDescriptionConfigured") : t("modelRegistryCardDescription")}
+        </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {isLoading ? <p className="text-sm text-muted-foreground">…</p> : null}
@@ -148,10 +176,10 @@ export function ProductModelRegistryCard() {
             </Button>
           </p>
         ) : null}
-        {data && !data.ollamaReachable ? (
-          <p className="text-sm text-destructive">
-            {t("modelRegistryOllamaUnreachable")}
-            {data.ollamaErrorMessage ? ` (${data.ollamaErrorMessage})` : ""}
+        {showModelServerUnreachable ? (
+          <p className="text-sm text-destructive" data-testid="model-registry-server-unreachable">
+            {t("modelRegistryServerUnreachable")}
+            {data?.ollamaErrorMessage ? ` (${data.ollamaErrorMessage})` : ""}
           </p>
         ) : null}
         {actionMessage ? <p className="text-sm text-muted-foreground">{actionMessage}</p> : null}
@@ -162,7 +190,9 @@ export function ProductModelRegistryCard() {
                 {t("modelRegistrySectionLlm")}
               </h3>
               <div>
-                {data.llmModels.map((row) => (
+                {data.llmModels
+                  .filter((row) => row.status === "AVAILABLE")
+                  .map((row) => (
                   <ModelRow
                     key={row.modelId}
                     row={row}
@@ -173,6 +203,8 @@ export function ProductModelRegistryCard() {
                       checkM.isPending &&
                       checkM.variables?.modelId === row.modelId
                     }
+                    showLocalActions={showLocalActions}
+                    effectiveProvider={effectiveProvider}
                   />
                 ))}
               </div>
@@ -182,7 +214,9 @@ export function ProductModelRegistryCard() {
                 {t("modelRegistrySectionEmbedding")}
               </h3>
               <div>
-                {data.embeddingModels.map((row) => (
+                {data.embeddingModels
+                  .filter((row) => row.status === "AVAILABLE")
+                  .map((row) => (
                   <ModelRow
                     key={row.modelId}
                     row={row}
@@ -193,6 +227,8 @@ export function ProductModelRegistryCard() {
                       checkM.isPending &&
                       checkM.variables?.modelId === row.modelId
                     }
+                    showLocalActions={showLocalActions}
+                    effectiveProvider={effectiveProvider}
                   />
                 ))}
               </div>

@@ -9,7 +9,7 @@ import { sanitizeTraceMetadata } from "./trace-metadata";
 
 /**
  * In-memory ring buffer cap for trace events (oldest dropped after add).
- * Not persisted — avoids leaking operational noise or sensitive text across sessions.
+ * Not persisted - avoids leaking operational noise or sensitive text across sessions.
  */
 export const MAX_TRACE_EVENTS = 100;
 

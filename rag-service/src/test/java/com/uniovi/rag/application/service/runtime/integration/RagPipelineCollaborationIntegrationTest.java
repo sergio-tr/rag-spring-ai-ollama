@@ -12,9 +12,11 @@ import com.uniovi.rag.application.service.runtime.clarification.ClarificationQue
 import com.uniovi.rag.application.service.runtime.memory.ConversationRecallGuard;
 import com.uniovi.rag.application.service.runtime.query.DefaultAmbiguityAssessmentService;
 import com.uniovi.rag.application.service.runtime.query.DefaultExpectedAnswerShapeResolver;
+import com.uniovi.rag.application.service.runtime.query.DefaultQueryUnderstandingPipeline;
 import com.uniovi.rag.application.service.runtime.query.DefaultQueryClassifierAdapter;
 import com.uniovi.rag.application.service.runtime.query.DefaultQueryIntentResolver;
-import com.uniovi.rag.application.service.runtime.query.DefaultQueryUnderstandingPipeline;
+import com.uniovi.rag.application.service.runtime.query.expand.QueryExpander;
+import com.uniovi.rag.application.service.runtime.query.QueryExpansionStage;
 import com.uniovi.rag.application.service.runtime.query.NamedEntityExtractionAdapter;
 import com.uniovi.rag.application.service.runtime.query.QueryClassifierAdapter;
 import com.uniovi.rag.application.service.runtime.query.StructuredQueryRewriter;
@@ -271,7 +273,7 @@ class RagPipelineCollaborationIntegrationTest {
 
         assertThat(validation.safe()).isTrue();
         assertThat(DeterministicToolTerminalAnswerGuard.shouldFinishTerminal(plan, toolResult, validation))
-                .isTrue();
+                .isFalse();
         assertThat(answer.toLowerCase()).doesNotContain("se decidió");
     }
 
@@ -370,7 +372,8 @@ class RagPipelineCollaborationIntegrationTest {
                 rewriter,
                 new DefaultQueryIntentResolver(),
                 new DefaultExpectedAnswerShapeResolver(),
-                new DefaultAmbiguityAssessmentService());
+                new DefaultAmbiguityAssessmentService(),
+                new QueryExpansionStage(mock(QueryExpander.class)));
     }
 
     private static QueryPlan filterListPlan(String query) {

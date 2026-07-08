@@ -6,8 +6,8 @@ Set **`OLLAMA_BASE_URL=http://ollama:11434`** (and the same for Spring) in `olla
 
 ## Layout
 
-- **Dockerfile** — Used with **`--profile ollama`**: build from base image (version in `ollama/.env`).
-- **`.env`** — Copy from `.env.example` or run `./docker/scripts/create-env-ollama.sh`. Variables: `OLLAMA_BASE_IMAGE`, `OLLAMA_PORT`, optional `OLLAMA_BASE_URL` for Spring.
+- **Dockerfile** - Used with **`--profile ollama`**: build from base image (version in `ollama/.env`).
+- **`.env`** - Copy from `.env.example` or run `./docker/scripts/create-env-ollama.sh`. Variables: `OLLAMA_BASE_IMAGE`, `OLLAMA_PORT`, optional `OLLAMA_BASE_URL` for Spring.
 
 ## Recommended demo mode: host-Ollama
 

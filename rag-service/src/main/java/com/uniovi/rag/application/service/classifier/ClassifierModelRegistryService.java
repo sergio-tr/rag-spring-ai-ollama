@@ -9,6 +9,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ClassifierModelEntityFactor
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.interfaces.rest.dto.ClassifierModelResponseDto;
 import com.uniovi.rag.application.service.config.UserProjectConfigurationService;
+import com.uniovi.rag.application.service.model.RegisteredModelValidation;
 import com.uniovi.rag.application.service.project.ProjectAccessService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,11 +21,15 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -98,6 +103,9 @@ public class ClassifierModelRegistryService {
             return;
         }
         String displayName = extractDisplayName(trainResult, requestedModelName);
+        if (!assertCanPersistRegisteredModel(userId, displayName, inferenceTag, false)) {
+            return;
+        }
         Map<String, Object> hp = new LinkedHashMap<>();
         hp.put(HP_SOURCE_TASK_ID, taskKey);
         hp.put(HP_OWNER_ID, userId.toString());
@@ -156,20 +164,111 @@ public class ClassifierModelRegistryService {
 
     /**
      * Ensures the caller sees a DB-backed row for the shared system classifier tag only (default model).
-     * Disk-trained tags under the shared {@code MODELS_DIR} are never materialized as rows for arbitrary users —
+     * Disk-trained tags under the shared {@code MODELS_DIR} are never materialized as rows for arbitrary users -
      * those appear only via {@link #registerAfterSuccessfulTrain(UUID, UUID, String, Map, int, int)} for the training owner.
      */
     @Transactional
     public List<ClassifierModelResponseDto> listForUserWithSync(UUID userId) {
+        List<Map<String, Object>> external = List.of();
         if (classifierLabPort != null && classifierLabPort.isConfigured()) {
             try {
-                List<Map<String, Object>> external = classifierLabPort.listModels();
+                external = classifierLabPort.listModels();
                 ensureSystemDefaultCatalogRow(userId, external);
             } catch (Exception e) {
                 log.warn("Could not sync classifier models from classifier-service: {}", e.getMessage());
             }
         }
-        return listForUser(userId);
+        return buildCatalogForUser(userId, external);
+    }
+
+    /**
+     * System default plus globally visible custom models (disk catalog from classifier-service, enriched with DB rows).
+     */
+    private List<ClassifierModelResponseDto> buildCatalogForUser(UUID userId, List<Map<String, Object>> externalModels) {
+        Set<String> externalTags = new HashSet<>();
+        if (externalModels != null) {
+            for (Map<String, Object> row : externalModels) {
+                if (row == null || row.get("id") == null) {
+                    continue;
+                }
+                String inferenceTag = row.get("id").toString().trim();
+                if (!inferenceTag.isBlank()) {
+                    externalTags.add(inferenceTag);
+                }
+            }
+        }
+        Map<String, ClassifierModelResponseDto> byTag = new LinkedHashMap<>();
+        for (ClassifierModelEntity e : classifierModelRepository.findByOwner_IdOrderByTrainedAtDesc(userId)) {
+            String tag = e.getArtifactPath() != null ? e.getArtifactPath().trim() : "";
+            if (tag.isBlank()) {
+                continue;
+            }
+            if (!externalTags.contains(tag)) {
+                log.debug(
+                        "Skipping classifier_model row id={} tag={} - artifact not present in classifier-service catalog",
+                        e.getId(),
+                        tag);
+                continue;
+            }
+            byTag.put(tag, toDto(e));
+        }
+        if (externalModels != null) {
+            for (Map<String, Object> row : externalModels) {
+                if (row == null) {
+                    continue;
+                }
+                String inferenceTag = row.get("id") != null ? row.get("id").toString().trim() : null;
+                if (inferenceTag == null || inferenceTag.isBlank() || byTag.containsKey(inferenceTag)) {
+                    continue;
+                }
+                byTag.put(inferenceTag, toDtoFromExternalCatalogRow(row));
+            }
+        }
+        List<ClassifierModelResponseDto> out = new ArrayList<>(byTag.values());
+        out.sort(
+                Comparator.<ClassifierModelResponseDto, Boolean>comparing(
+                                dto -> !classifierSystemInferenceTag.equals(dto.inferenceTag()))
+                        .thenComparing(
+                                ClassifierModelResponseDto::trainedAt,
+                                Comparator.nullsLast(Comparator.reverseOrder())));
+        return out;
+    }
+
+    private ClassifierModelResponseDto toDtoFromExternalCatalogRow(Map<String, Object> row) {
+        String inferenceTag = row.get("id") != null ? row.get("id").toString().trim() : "";
+        String name = row.get("name") != null ? row.get("name").toString() : inferenceTag;
+        if (RegisteredModelValidation.isReservedToken(name) && !classifierSystemInferenceTag.equals(inferenceTag)) {
+            name = "Classifier " + inferenceTag;
+        }
+        Instant trainedAt = parseInstantOrNull(row.get("createdAt"));
+        Double accuracy = null;
+        Double f1Macro = null;
+        if (row.get("metrics") instanceof Map<?, ?> mm) {
+            Object acc = mm.get("accuracy");
+            if (acc instanceof Number n) {
+                accuracy = n.doubleValue();
+            }
+            Object f1 = mm.get("macro_avg_f1");
+            if (f1 instanceof Number n) {
+                f1Macro = n.doubleValue();
+            }
+        }
+        Map<String, Object> hp = new LinkedHashMap<>();
+        hp.put("external", true);
+        hp.put("source", "classifier-service");
+        hp.put(HP_SYSTEM_CATALOG, classifierSystemInferenceTag.equals(inferenceTag));
+        UUID syntheticId =
+                UUID.nameUUIDFromBytes(("classifier-catalog:" + inferenceTag).getBytes(StandardCharsets.UTF_8));
+        return new ClassifierModelResponseDto(
+                syntheticId,
+                name,
+                inferenceTag,
+                ClassifierModelStatus.READY.name(),
+                trainedAt != null ? trainedAt : Instant.EPOCH,
+                accuracy,
+                f1Macro,
+                false,
+                hp);
     }
 
     @Transactional
@@ -197,7 +296,10 @@ public class ClassifierModelRegistryService {
             if (existing.isPresent()) {
                 return;
             }
-            String name = row.get("name") != null ? row.get("name").toString() : inferenceTag;
+            String name = row.get("name") != null ? row.get("name").toString() : "System classifier";
+            if (RegisteredModelValidation.isReservedToken(name)) {
+                name = "System classifier";
+            }
             Instant trainedAt = parseInstantOrNull(row.get("createdAt"));
             if (trainedAt == null) {
                 trainedAt = Instant.now();
@@ -209,8 +311,12 @@ public class ClassifierModelRegistryService {
             if (row.get("metrics") instanceof Map<?, ?> mm) {
                 hp.put("externalMetrics", mm);
             }
+            if (!assertCanPersistRegisteredModel(userId, name, inferenceTag, true)) {
+                return;
+            }
             ClassifierModelEntity e =
-                    ClassifierModelEntityFactory.newReadyTrainingArtifact(owner, name, inferenceTag, hp, trainedAt);
+                    ClassifierModelEntityFactory.newReadyTrainingArtifact(
+                            owner, name, inferenceTag, hp, trainedAt, true);
             classifierModelRepository.save(e);
             return;
         }
@@ -218,7 +324,7 @@ public class ClassifierModelRegistryService {
 
     /**
      * Marks the row as the active artifact for the user and merges {@code classifierModelId} into project RAG JSON
-     * (inference tag string — same value used by classifier-service {@code /classify}).
+     * (inference tag string - same value used by classifier-service {@code /classify}).
      */
     @Transactional
     public ClassifierModelResponseDto activateForProject(UUID userId, UUID projectId, UUID modelRowId) {
@@ -278,6 +384,29 @@ public class ClassifierModelRegistryService {
             return true;
         }
         return classifierSystemInferenceTag.equals(tag);
+    }
+
+    private boolean assertCanPersistRegisteredModel(
+            UUID userId, String displayName, String inferenceTag, boolean systemCatalogRow) {
+        try {
+            RegisteredModelValidation.assertValidName(displayName);
+            RegisteredModelValidation.assertValidInferenceTag(inferenceTag, systemCatalogRow);
+            String normalizedName = RegisteredModelValidation.normalizeName(displayName);
+            String normalizedTag = RegisteredModelValidation.normalizeInferenceTag(inferenceTag);
+            RegisteredModelValidation.assertNoDuplicateName(
+                    classifierModelRepository.existsByOwner_IdAndNameIgnoreCase(userId, normalizedName));
+            RegisteredModelValidation.assertNoDuplicateInferenceTag(
+                    classifierModelRepository.existsByOwner_IdAndArtifactPath(userId, normalizedTag));
+            return true;
+        } catch (ResponseStatusException e) {
+            log.warn(
+                    "Skipping classifier_model persist for user {} name='{}' tag='{}': {}",
+                    userId,
+                    displayName,
+                    inferenceTag,
+                    e.getReason());
+            return false;
+        }
     }
 
     private static ClassifierModelResponseDto toDto(ClassifierModelEntity e) {

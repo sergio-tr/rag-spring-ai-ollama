@@ -8,7 +8,10 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Normalizes conversation runtimeOverride into a manual-differences-only diff against a base effective config.
+ * Legacy diff helper (manual-differences-only against base effective config).
+ *
+ * <p>Persistence and PATCH paths now use {@link ConversationConfigurationSupport} full snapshot merge.
+ * This class remains for any callers that still need diff normalization.
  */
 public final class RuntimeOverrideNormalizer {
 

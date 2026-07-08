@@ -14,7 +14,7 @@ if [ -f mvnw ]; then
   chmod +x mvnw
 fi
 
-# Any .class under target/classes (classpath check — not sufficient alone)
+# Any .class under target/classes (classpath check - not sufficient alone)
 has_compiled_classes() {
   [ -d target/classes ] || return 1
   test -n "$(find target/classes -type f -name '*.class' 2>/dev/null | head -n 1)"
@@ -26,26 +26,39 @@ has_boot_application_class() {
   [ -f target/classes/com/uniovi/Application.class ]
 }
 
+compiled_class_count() {
+  find target/classes -type f -name '*.class' 2>/dev/null | wc -l | tr -d ' '
+}
+
+has_healthy_compile_tree() {
+  has_boot_application_class || return 1
+  local count
+  count="$(compiled_class_count)"
+  [ "${count:-0}" -ge 500 ]
+}
+
 need_initial_compile=true
 if [ "${RAG_DEV_FORCE_INITIAL_COMPILE:-}" = "1" ] || [ "${RAG_DEV_FORCE_INITIAL_COMPILE:-}" = "true" ]; then
   need_initial_compile=true
 elif [ "${RAG_DEV_SKIP_INITIAL_COMPILE:-}" = "1" ] || [ "${RAG_DEV_SKIP_INITIAL_COMPILE:-}" = "true" ]; then
-  if has_boot_application_class; then
+  if has_healthy_compile_tree; then
     need_initial_compile=false
   else
-    echo "[rag-service docker-dev] RAG_DEV_SKIP_INITIAL_COMPILE but Application.class is missing — compiling once."
+    echo "[rag-service docker-dev] RAG_DEV_SKIP_INITIAL_COMPILE but compile tree looks incomplete - compiling once."
   fi
-elif has_boot_application_class; then
+elif has_healthy_compile_tree; then
   need_initial_compile=false
+elif has_boot_application_class; then
+  echo "[rag-service docker-dev] Application.class present but only $(compiled_class_count) .class files - partial target/classes; compiling."
 elif has_compiled_classes; then
-  echo "[rag-service docker-dev] target/classes has .class files but com/uniovi/Application.class is missing — compiling."
+  echo "[rag-service docker-dev] target/classes has .class files but com/uniovi/Application.class is missing - compiling."
 fi
 
 if [ "$need_initial_compile" = true ]; then
   echo "[rag-service docker-dev] Initial compile..."
   ./mvnw -q compile -Dmaven.test.skip=true
 else
-  echo "[rag-service docker-dev] Skipping initial compilation (Application.class present). Force: RAG_DEV_FORCE_INITIAL_COMPILE=1"
+  echo "[rag-service docker-dev] Skipping initial compilation ($(compiled_class_count) .class files). Force: RAG_DEV_FORCE_INITIAL_COMPILE=1"
 fi
 
 # Interval between checks (seconds). Increase for very large repos if needed.
@@ -73,5 +86,14 @@ cleanup() { kill "$WATCH_PID" 2>/dev/null || true; }
 trap cleanup EXIT
 
 : "${SPRING_PROFILES_ACTIVE:=dev}"
+
+# DevTools restarts on target/classes changes; with a bind-mounted target/ a partial clean on the
+# host can leave stale .class files and trigger NoClassDefFoundError crash-loops. After refactors or
+# mvn clean on the host, run ./mvnw clean compile (or docker/scripts/dev-smoke-bootstrap.sh).
+DEVTOOLS_RESTART=true
+if [ "${RAG_DEV_DISABLE_DEVTOOLS:-}" = "1" ] || [ "${RAG_DEV_DISABLE_DEVTOOLS:-}" = "true" ]; then
+  DEVTOOLS_RESTART=false
+fi
+
 exec ./mvnw spring-boot:run \
-  -Dspring.devtools.restart.enabled=true
+  -Dspring.devtools.restart.enabled="${DEVTOOLS_RESTART}"

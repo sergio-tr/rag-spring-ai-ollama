@@ -10,6 +10,8 @@ import com.sun.net.httpserver.HttpServer;
 import com.uniovi.rag.application.port.llm.LlmChatRequest;
 import com.uniovi.rag.application.port.llm.LlmChatResponse;
 import com.uniovi.rag.domain.llm.LlmProvider;
+import com.uniovi.rag.application.service.llm.LlmProviderParameterFilter;
+import com.uniovi.rag.application.service.llm.catalog.LlmModelCatalogService;
 import com.uniovi.rag.infrastructure.llm.LlmOpenAiCompatibleDefaults;
 import com.uniovi.rag.infrastructure.llm.LlmProperties;
 import java.io.IOException;
@@ -181,7 +183,8 @@ class OpenAiCompatibleLlmChatClientTest {
         return new OpenAiCompatibleLlmChatClient(
                 properties,
                 new OpenAiCompatibleApiKeyResolver(envReader != null ? envReader : name -> apiKey),
-                new OpenAiCompatibleChatCompletionsHttpClient());
+                new OpenAiCompatibleChatCompletionsHttpClient(),
+                new LlmProviderParameterFilter(new LlmModelCatalogService(properties)));
     }
 
     private static OpenAiCompatibleLlmChatClient client(String baseUrl, String apiKey, String defaultModel) {

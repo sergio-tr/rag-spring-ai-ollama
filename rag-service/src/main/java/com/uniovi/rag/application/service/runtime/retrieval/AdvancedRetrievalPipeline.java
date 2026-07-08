@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.runtime.retrieval;
 
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.application.service.runtime.DateGroundingSupport;
+import com.uniovi.rag.application.service.runtime.query.ActaDocumentAnchorSupport;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
@@ -13,11 +14,16 @@ import com.uniovi.rag.domain.runtime.retrieval.CuratedContextSet;
 import com.uniovi.rag.domain.runtime.retrieval.RerankOutcome;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics;
-import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
+import com.uniovi.rag.application.service.runtime.optimization.RagRankerDecisionPolicy;
+import com.uniovi.rag.application.service.runtime.advisor.MetadataToolContextAssembler;
+import com.uniovi.rag.application.service.runtime.optimization.DeterministicToolPromptBudgetPolicy;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievedContextSet;
 import com.uniovi.rag.domain.runtime.retrieval.FusionTelemetry;
 import com.uniovi.rag.domain.runtime.retrieval.MetadataFilterTelemetry;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalSourceResolutionScope;
 import com.uniovi.rag.domain.runtime.retrieval.SparseRetrievalTelemetry;
 import org.springframework.stereotype.Service;
 
@@ -51,6 +57,7 @@ public class AdvancedRetrievalPipeline {
     private final MetadataAppendixLoader metadataAppendixLoader;
     private final MetadataConstraintFilter metadataConstraintFilter;
     private final RetrievalContextExpander retrievalContextExpander;
+    private final MetadataToolContextAssembler metadataToolContextAssembler;
 
     public AdvancedRetrievalPipeline(
             RetrievalRequestBuilder retrievalRequestBuilder,
@@ -63,7 +70,8 @@ public class AdvancedRetrievalPipeline {
             RetrievalPromptTextBuilder retrievalPromptTextBuilder,
             MetadataAppendixLoader metadataAppendixLoader,
             MetadataConstraintFilter metadataConstraintFilter,
-            RetrievalContextExpander retrievalContextExpander) {
+            RetrievalContextExpander retrievalContextExpander,
+            MetadataToolContextAssembler metadataToolContextAssembler) {
         this.retrievalRequestBuilder = retrievalRequestBuilder;
         this.denseRetrievalStrategy = denseRetrievalStrategy;
         this.hybridRetrievalStrategy = hybridRetrievalStrategy;
@@ -75,24 +83,48 @@ public class AdvancedRetrievalPipeline {
         this.metadataAppendixLoader = metadataAppendixLoader;
         this.metadataConstraintFilter = metadataConstraintFilter;
         this.retrievalContextExpander = retrievalContextExpander;
+        this.metadataToolContextAssembler = metadataToolContextAssembler;
     }
 
     public CuratedContextSet retrieve(ExecutionContext ctx, QueryPlan plan, String workflowName) {
+        Optional<DeterministicToolEvidenceHolder.Evidence> toolEvidence = DeterministicToolEvidenceHolder.get();
+        if (toolEvidence.isPresent()
+                && toolEvidence.get().highConfidence()
+                && DeterministicToolPromptBudgetPolicy.shouldUseToolScopedContext(plan, workflowName)) {
+            return curatedFromToolEvidence(ctx, plan, workflowName, toolEvidence.get());
+        }
+
         List<ExecutionStageTrace> traces = new ArrayList<>();
         List<String> traceNotes = new ArrayList<>();
 
         long tBuild = System.nanoTime();
         RetrievalRequest req = retrievalRequestBuilder.build(ctx, plan);
-        traces.add(stage("retrieval_build_request", tBuild, ExecutionStageOutcome.SUCCESS, ""));
+        double configuredSimilarityThreshold = effectiveSimilarityThreshold(ctx);
+        traces.add(
+                stage(
+                        "retrieval_build_request",
+                        tBuild,
+                        ExecutionStageOutcome.SUCCESS,
+                        "effectiveTopK="
+                                + req.postFusionCap()
+                                + " threshold="
+                                + configuredSimilarityThreshold
+                                + " denseFetchLimit="
+                                + req.denseFetchLimit()));
 
         RetrievedContextSet retrieved;
         Optional<SparseRetrievalTelemetry> sparseTelemetry = Optional.empty();
         Optional<FusionTelemetry> fusionTelemetry = Optional.empty();
         Optional<MetadataFilterTelemetry> metadataFilterTelemetry = Optional.empty();
+        double runtimeSimilarityThresholdUsed = configuredSimilarityThreshold;
         if (req.mode() == RetrievalMode.DENSE_ONLY) {
             long tDense = System.nanoTime();
             DenseRetrievalOutcome denseOutcome = denseRetrievalStrategy.retrieveWithOutcome(req);
             List<RetrievalCandidate> dense = denseOutcome.candidates();
+            runtimeSimilarityThresholdUsed =
+                    Double.isFinite(denseOutcome.similarityThresholdUsed())
+                            ? denseOutcome.similarityThresholdUsed()
+                            : configuredSimilarityThreshold;
             traces.add(
                     stage(
                             "retrieval_dense",
@@ -105,7 +137,11 @@ public class AdvancedRetrievalPipeline {
                                     + " postSnapshot="
                                     + denseOutcome.postSnapshotCandidateCount()
                                     + " postProject="
-                                    + denseOutcome.postProjectCandidateCount()));
+                                    + denseOutcome.postProjectCandidateCount()
+                                    + " effectiveTopK="
+                                    + req.postFusionCap()
+                                    + " threshold="
+                                    + runtimeSimilarityThresholdUsed));
             traces.add(skipped("retrieval_sparse", "mode=DENSE_ONLY"));
             traces.add(skipped("retrieval_fuse", "mode=DENSE_ONLY"));
             retrieved =
@@ -183,6 +219,13 @@ public class AdvancedRetrievalPipeline {
         if (!rerankEnabled) {
             rerankResult = identityRerank(req, retrieved.candidates());
             traces.add(skipped("retrieval_rerank", "rankerEnabled=false count=" + rerankResult.candidates().size()));
+        } else if (RagRankerDecisionPolicy.decide(req.queryText(), plan, retrieved.candidates())
+                == RagRankerDecisionPolicy.Decision.SKIP_CLEAR_FACTUAL) {
+            rerankResult = identityRerank(req, retrieved.candidates());
+            traces.add(
+                    skipped(
+                            "retrieval_rerank",
+                            "decision=SKIP_CLEAR_FACTUAL count=" + rerankResult.candidates().size()));
         } else {
             rerankResult = retrievalReranker.rerank(req, plan, retrieved.candidates());
             traces.add(
@@ -198,7 +241,9 @@ public class AdvancedRetrievalPipeline {
                 : Optional.empty();
 
         long tFilterBasic = System.nanoTime();
-        List<RetrievalCandidate> filteredBasic = retrievalFilter.filterBasic(req, rerankResult.candidates());
+        List<RetrievalCandidate> boostedBasic =
+                MetadataRetrievalBooster.apply(req, plan, workflowName, rerankResult.candidates());
+        List<RetrievalCandidate> filteredBasic = retrievalFilter.filterBasic(req, boostedBasic);
         traces.add(stage("retrieval_filter_basic", tFilterBasic, ExecutionStageOutcome.SUCCESS, "count=" + filteredBasic.size()));
 
         boolean postRetrievalEnabled = ctx.resolved().toRagConfig().postRetrievalEnabled();
@@ -211,17 +256,19 @@ public class AdvancedRetrievalPipeline {
         if (!postRetrievalEnabled) {
             traces.add(skipped("retrieval_filter_advanced", "postRetrievalEnabled=false"));
             traces.add(skipped("retrieval_compress", "postRetrievalEnabled=false"));
-            filteredFinal = applyDateGrounding(req, filteredBasic, traces);
+            filteredFinal = applyActaAnchorGrounding(req, applyDateGrounding(req, filteredBasic, traces), traces);
         } else {
             long tFilterAdv = System.nanoTime();
-            List<RetrievalCandidate> advancedInput = retrievalFilter.filterAdvanced(req, plan, rerankResult.candidates());
+            List<RetrievalCandidate> advancedInput =
+                    MetadataRetrievalBooster.apply(req, plan, workflowName, rerankResult.candidates());
+            advancedInput = retrievalFilter.filterAdvanced(req, plan, advancedInput);
             MetadataConstraintFilter.FilterResult constraintResult =
                     metadataConstraintFilter.apply(req, plan, advancedInput);
             metadataFilterTelemetry = Optional.of(constraintResult.telemetry());
             if (constraintResult.telemetry().fallback()) {
                 traceNotes.add("metadata_filter_fallback");
             }
-            filteredFinal = applyDateGrounding(req, constraintResult.candidates(), traces);
+            filteredFinal = applyActaAnchorGrounding(req, applyDateGrounding(req, constraintResult.candidates(), traces), traces);
             traces.add(
                     stage(
                             "retrieval_filter_advanced",
@@ -236,9 +283,11 @@ public class AdvancedRetrievalPipeline {
         }
 
         long tExpand = System.nanoTime();
+        int afterFilterCount = filteredFinal.size();
         RetrievalContextExpander.ExpansionResult expansion =
                 retrievalContextExpander.expand(req, plan, filteredFinal);
         filteredFinal = expansion.candidates();
+        int afterExpandCount = filteredFinal.size();
         dedupedDocumentCount = expansion.dedupedDocumentCount();
         traceNotes.addAll(expansion.notes());
         traces.add(
@@ -287,8 +336,9 @@ public class AdvancedRetrievalPipeline {
         }
 
         RetrievalLayout layout = resolveRetrievalLayout(workflowName, plan);
+        boolean metadataRichContext = WORKFLOW_CHUNK_DENSE_METADATA.equals(workflowName);
         long tPack = System.nanoTime();
-        String prompt = retrievalPromptTextBuilder.build(compressed.candidates(), req.queryText(), layout);
+        String prompt = retrievalPromptTextBuilder.build(compressed.candidates(), req.queryText(), layout, metadataRichContext);
         traces.add(stage("context_pack", tPack, ExecutionStageOutcome.SUCCESS, "chars=" + (prompt != null ? prompt.length() : 0)));
         if (compressed.candidates().isEmpty()) {
             prompt = "";
@@ -322,6 +372,16 @@ public class AdvancedRetrievalPipeline {
             traceNotes.add("rerank_no_order_change");
         }
         int hybridCandidateCount = retrieved.denseInputCount() + retrieved.sparseInputCount();
+        Optional<String> reductionReason =
+                resolveContextReductionReason(
+                        req,
+                        retrieved.denseInputCount(),
+                        rerankResult.candidates().size(),
+                        afterFilterCount,
+                        afterExpandCount,
+                        compressed.candidates().size(),
+                        droppedByCompression,
+                        expansion.notes());
         RetrievalDiagnostics diagnostics =
                 new RetrievalDiagnostics(
                         req.mode(),
@@ -332,7 +392,7 @@ public class AdvancedRetrievalPipeline {
                         retrieved.fusedCount(),
                         rerankResult.candidates().size(),
                         rerankResult.candidates().size(),
-                        filteredFinal.size(),
+                        afterFilterCount,
                         compressed.candidates().size(),
                         protectedCount,
                         droppedByCompression,
@@ -346,7 +406,12 @@ public class AdvancedRetrievalPipeline {
                         dedupedDocumentCount > 0 ? dedupedDocumentCount : retrieved.fusedCount(),
                         sparseTelemetry,
                         fusionTelemetry,
-                        metadataFilterTelemetry);
+                        metadataFilterTelemetry,
+                        Optional.of(req.postFusionCap()),
+                        Optional.of(runtimeSimilarityThresholdUsed),
+                        Optional.of(req.denseFetchLimit()),
+                        reductionReason,
+                        RetrievalSourceResolutionScope.current());
 
         return new CuratedContextSet(
                 compressed.candidates(),
@@ -424,7 +489,42 @@ public class AdvancedRetrievalPipeline {
         }
         Optional<DateGroundingSupport.RequestedDate> requested =
                 DateGroundingSupport.requestedDate(req.queryText(), req.entities().dates());
-        return requested.map(date -> DateGroundingSupport.preferExactDate(candidates, date)).orElse(candidates);
+        List<RetrievalCandidate> ordered =
+                requested.map(date -> DateGroundingSupport.preferExactDate(candidates, date)).orElse(candidates);
+        return applyActaAnchorOrder(req, ordered);
+    }
+
+    private static List<RetrievalCandidate> applyActaAnchorOrder(RetrievalRequest req, List<RetrievalCandidate> candidates) {
+        return ActaDocumentAnchorSupport.resolveActaNumber(req.queryText())
+                .map(n -> ActaDocumentAnchorSupport.preferActaAnchored(candidates, n))
+                .orElse(candidates);
+    }
+
+    private static List<RetrievalCandidate> applyActaAnchorGrounding(
+            RetrievalRequest req,
+            List<RetrievalCandidate> candidates,
+            List<ExecutionStageTrace> traces) {
+        Optional<Integer> acta = ActaDocumentAnchorSupport.resolveActaNumber(req.queryText());
+        if (acta.isEmpty()) {
+            traces.add(skipped("acta_anchor_grounding", "actaNumber=none"));
+            return candidates != null ? candidates : List.of();
+        }
+        List<RetrievalCandidate> safe = candidates != null ? candidates : List.of();
+        List<RetrievalCandidate> selected = ActaDocumentAnchorSupport.preferActaAnchored(safe, acta.get());
+        traces.add(
+                stage(
+                        "acta_anchor_grounding",
+                        System.nanoTime(),
+                        ExecutionStageOutcome.SUCCESS,
+                        "actaNumber="
+                                + acta.get()
+                                + " canonicalFilename="
+                                + ActaDocumentAnchorSupport.canonicalFilename(acta.get())
+                                + " before="
+                                + safe.size()
+                                + " after="
+                                + selected.size()));
+        return selected;
     }
 
     private static List<String> topCandidateIds(List<RetrievalCandidate> candidates, int max) {
@@ -471,6 +571,10 @@ public class AdvancedRetrievalPipeline {
             }
             String id = c.candidateId();
             if (id == null || id.isBlank()) {
+                continue;
+            }
+            if (ActaSectionContextPolicy.isProtectedFromCompression(req.queryText(), c)) {
+                out.add(id);
                 continue;
             }
             String docId = extractDocId(c);
@@ -545,6 +649,97 @@ public class AdvancedRetrievalPipeline {
             }
         }
         return n;
+    }
+
+    private static double effectiveSimilarityThreshold(ExecutionContext ctx) {
+        if (ctx == null || ctx.resolved() == null || ctx.resolved().toRagConfig() == null) {
+            return 0.0;
+        }
+        return ctx.resolved().toRagConfig().similarityThreshold();
+    }
+
+    private static Optional<String> resolveContextReductionReason(
+            RetrievalRequest req,
+            int denseCandidateCount,
+            int rerankCount,
+            int afterFilterCount,
+            int afterExpandCount,
+            int afterCompressionCount,
+            int droppedByCompression,
+            List<String> expansionNotes) {
+        int effectiveTopK = req != null ? Math.max(0, req.postFusionCap()) : 0;
+        if (effectiveTopK <= 0 || afterCompressionCount >= effectiveTopK) {
+            return Optional.empty();
+        }
+        if (denseCandidateCount < effectiveTopK) {
+            return Optional.of("fewer_dense_hits");
+        }
+        if (afterFilterCount < rerankCount) {
+            return Optional.of("threshold_or_scope");
+        }
+        if (afterExpandCount < afterFilterCount
+                && expansionNotes != null
+                && expansionNotes.stream().anyMatch(n -> n != null && n.startsWith("section_expand:"))) {
+            return Optional.of("section_merge");
+        }
+        if (afterCompressionCount < afterExpandCount || droppedByCompression > 0) {
+            return Optional.of("compression_drop");
+        }
+        return Optional.of("context_budget_or_dedup");
+    }
+
+    private CuratedContextSet curatedFromToolEvidence(
+            ExecutionContext ctx,
+            QueryPlan plan,
+            String workflowName,
+            DeterministicToolEvidenceHolder.Evidence evidence) {
+        List<ExecutionStageTrace> traces = new ArrayList<>();
+        traces.add(
+                stage(
+                        "retrieval_tool_scoped_context",
+                        0L,
+                        ExecutionStageOutcome.SUCCESS,
+                        "TOOL_DIRECT_ANSWER_CONTEXT matchedMinutes="
+                                + evidence.matchedMinutes().size()));
+        String context =
+                DeterministicToolPromptBudgetPolicy.budgetPrimaryAnswerContext(
+                                evidence.assembledContextText() != null && !evidence.assembledContextText().isBlank()
+                                        ? evidence.assembledContextText()
+                                        : metadataToolContextAssembler.assembleFromMinutes(
+                                                evidence.matchedMinutes()))
+                        .textUsed();
+        CompressionOutcome compression =
+                new CompressionOutcome(context.length(), context.length(), 0, List.of("tool_scoped_context"));
+        RetrievalDiagnostics diagnostics =
+                new RetrievalDiagnostics(
+                        RetrievalMode.DENSE_ONLY,
+                        Optional.empty(),
+                        "",
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        false,
+                        List.of(),
+                        List.of(),
+                        Optional.empty(),
+                        0,
+                        0,
+                        false,
+                        0);
+        return new CuratedContextSet(
+                List.of(),
+                context,
+                compression,
+                List.of("skipped_dense_supplemental=tool_high_confidence"),
+                diagnostics,
+                List.of(),
+                traces);
     }
 
     private static String truncate(String value, int max) {

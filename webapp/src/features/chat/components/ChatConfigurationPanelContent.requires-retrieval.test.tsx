@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ChatConfigurationPanelContent } from "./ChatConfigurationPanelContent";
@@ -100,6 +100,7 @@ describe("ChatConfigurationPanelContent retrieval dependency", () => {
           conversationLlmModel: null,
           conversationClassifierModelId: null,
           conversationModelsPinned: false,
+          configurationMode: "PRESET" as const,
           runtimeOverride: {},
           manualOverrideKeys: [],
           isCustom: false,
@@ -121,7 +122,9 @@ describe("ChatConfigurationPanelContent retrieval dependency", () => {
         setLlmModelChoice: vi.fn(),
         classifierModelChoice: "",
         setClassifierModelChoice: vi.fn(),
-        modelsCatalog: undefined,
+        selectableLlmModels: [],
+        selectableLlmModelsLoading: false,
+        selectableLlmModelsEffectiveProvider: undefined,
         modelsError: false,
         modelsErrorMessage: "",
         presetSelectValue: "",
@@ -129,6 +132,9 @@ describe("ChatConfigurationPanelContent retrieval dependency", () => {
         presets: [],
         presetsError: false,
         presetsLoading: false,
+        projectCompatiblePresets: null,
+        compatibleProductPresets: [],
+        compatibleExperimentalPresets: [],
         experimentalPresets: [],
         experimentalPresetsLoading: false,
         experimentalPresetsError: false,
@@ -162,13 +168,10 @@ describe("ChatConfigurationPanelContent retrieval dependency", () => {
       </QueryClientProvider>,
     );
 
-    await user.click(screen.getByTestId("chat-config-runtime-collapsible"));
+    await user.click(screen.getByTestId("chat-config-edit-button"));
 
-    const ranker = screen.getByRole("checkbox", { name: /ranker/i });
+    const ranker = screen.getByTestId("chat-runtime-toggle-rankerEnabled");
     expect(ranker).toBeDisabled();
-    const rankerRow = ranker.closest(".flex.flex-col");
-    expect(rankerRow).not.toBeNull();
-    await user.click(within(rankerRow as HTMLElement).getByRole("button", { name: /^Disabled$/i }));
-    expect(await screen.findByText(/Requires useRetrieval/i)).toBeInTheDocument();
+    expect(screen.getByTestId("chat-runtime-disable-tip-rankerEnabled")).toHaveTextContent("Requires retrieval");
   });
 });

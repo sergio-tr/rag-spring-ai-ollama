@@ -270,7 +270,7 @@ export type ApiErrorMeta = {
   parsedJson?: unknown | null;
   details?: Record<string, unknown>;
   contentType?: string | null;
-  /** Bounded slice of raw body for logs/debug only — never render unbounded HTML to users. */
+  /** Bounded slice of raw body for logs/debug only - never render unbounded HTML to users. */
   rawBodyPreview?: string;
   diagnostics?: {
     traceparent?: string | null;

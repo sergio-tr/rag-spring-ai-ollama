@@ -14,7 +14,7 @@ import {
 
 const EVIDENCE_DIR = path.resolve(
   __dirname,
-  "../../../.cursor/evidence/wave-1-current/p1-01",
+  "../../../docs/evidence/wave-1-current/p1-01",
 );
 
 test.describe("App shell layout scroll @layout @scroll", () => {

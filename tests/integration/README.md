@@ -22,7 +22,7 @@ Do **not** mix Path A and Path B in the same CI job (no Python Testcontainers al
 | Auth + product smoke, `GET /projects`, SYS chains | **Playwright API** (`webapp/e2e/api/`) |
 | Browser UX, full flows | **Playwright E2E** (`webapp/e2e/`) |
 
-**Removed from pytest:** `GET {product}/projects` happy path after login — covered by Playwright API (`login.api.spec.ts`, `projects.api.spec.ts`, `system-smoke.chain.spec.ts`).
+**Removed from pytest:** `GET {product}/projects` happy path after login - covered by Playwright API (`login.api.spec.ts`, `projects.api.spec.ts`, `system-smoke.chain.spec.ts`).
 
 **Phase 8E (JSON safety vs HTML):** `test_stack_integration.py` asserts authenticated **`GET {product}/lab/status`** shape, **`POST {product}/me/account/export`** **202** payload, and unknown product route **404** with **`application/json`** (via `_assert_json_response_not_html`).
 
@@ -39,7 +39,7 @@ The workflow [`.github/workflows/integration.yml`](../../.github/workflows/integ
 - `INTEGRATION_CHECK_OBS=0` (no Jaeger/Prometheus/Grafana assertions in this job).
 - `INTEGRATION_BACKEND_URL=http://127.0.0.1:9000` and optional admin credentials for `TestBackendAdminApi`.
 
-**Classifier:** the standard integration job is backend-focused and may leave classifier checks optional. The classifier-required CI lane and the local closure lane set `INTEGRATION_STRICT=1` and `INTEGRATION_REQUIRE_CLASSIFIER=1`, so classifier reachability cannot become a skip-only false green. `INTEGRATION_REQUIRE_CLASSIFIER_MODEL=1` is the stricter mode that also requires `/health` to report a loaded Keras model before `/classify` assertions. The local closure lane defaults to that stricter mode; CI may keep it at `0` when it only wants classifier-service reachability.
+**Classifier:** the standard integration job is backend-focused and may leave classifier checks optional. The classifier-required CI lane and the local closure lane set `INTEGRATION_STRICT=1` and `INTEGRATION_REQUIRE_CLASSIFIER=1`, so classifier reachability cannot become a skip-only false green. `INTEGRATION_REQUIRE_CLASSIFIER_MODEL=1` is the stricter mode that also requires `/health` to report a loaded default model (sklearn or Keras per `metadata.json`) before `/classify` assertions. The local closure lane defaults to that stricter mode; CI may keep it at `0` when it only wants classifier-service reachability.
 
 **Observability:** for `TestObservabilityStack`, use a local stack with `compose.obs.yml` and `INTEGRATION_CHECK_OBS=1` (or `auto`).
 
@@ -119,7 +119,7 @@ pip install -r tests/integration/requirements.txt
 pytest tests/integration/test_tc_postgres_smoke.py -v
 ```
 
-To point a **local** Spring process at the same container after extensions are created, start the container by running the smoke test once with `INTEGRATION_TC_PRINT_JDBC=1` (prints a suggested `SPRING_DATASOURCE_URL`), then run `./mvnw spring-boot:run` with profile `e2e` in another terminal — advanced and not automated here.
+To point a **local** Spring process at the same container after extensions are created, start the container by running the smoke test once with `INTEGRATION_TC_PRINT_JDBC=1` (prints a suggested `SPRING_DATASOURCE_URL`), then run `./mvnw spring-boot:run` with profile `e2e` in another terminal - advanced and not automated here.
 
 ## Observability tests (`INTEGRATION_CHECK_OBS`)
 

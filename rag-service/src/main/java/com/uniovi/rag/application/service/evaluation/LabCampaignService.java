@@ -109,7 +109,7 @@ public class LabCampaignService {
                         bootstrapFailOnDocumentError,
                         req.indexSnapshotIds(),
                         req.datasetQuestionIds(),
-                        req.goldSubsetManifestId(), req.routingQueryTypeOracleEnabled());
+                        req.goldSubsetManifestId(), req.routingQueryTypeOracleEnabled(), Map.of());
 
         BenchmarkJobAccepted accepted = orchestrator.startJsonBenchmark(userId, "USER", kind, body);
         UUID campaignId = accepted.campaignId().orElse(null);
@@ -485,10 +485,12 @@ public class LabCampaignService {
             Map<String, Object> row = rowFromRollupBucket(ctx.comparisonAxis(), axisValue, bucket);
             row.put("runId", run.getId());
             row.put("runName", run.getName());
-            row.put("modelLabel", humanModelLabel(run));
+            row.put("llmModelId", run.getLlmModelId());
+            row.put("embeddingModelId", run.getEmbeddingModelId());
+            row.put("modelLabel", humanModelLabel(ctx.comparisonAxis(), run));
             row.put("presetLabel", humanPresetLabel(run));
             row.put("presetKey", resolvePresetCode(run));
-            row.put("comparisonLabel", comparisonLabel(run));
+            row.put("comparisonLabel", comparisonLabelForAxis(ctx.comparisonAxis(), run, axisValue));
             Map<String, Object> firstMetrics = readFirstItemMetrics(run);
             String presetCode = resolvePresetCode(run);
             row.put("presetOrder", BenchmarkExportSupport.resolvePresetOrder(presetCode, firstMetrics));
@@ -574,6 +576,32 @@ public class LabCampaignService {
 
     private String comparisonLabel(EvaluationRunEntity run) {
         return labPresetAxisSupport.comparisonLabel(run);
+    }
+
+    private String comparisonLabelForAxis(String comparisonAxis, EvaluationRunEntity run, String axisValue) {
+        if (COMPARISON_AXIS_EMBEDDING.equals(comparisonAxis)) {
+            if (axisValue != null && !axisValue.isBlank()) {
+                return axisValue.trim();
+            }
+            return run.getEmbeddingModelId() != null ? run.getEmbeddingModelId().trim() : "";
+        }
+        if (COMPARISON_AXIS_LLM.equals(comparisonAxis)) {
+            if (axisValue != null && !axisValue.isBlank()) {
+                return axisValue.trim();
+            }
+            return run.getLlmModelId() != null ? run.getLlmModelId().trim() : "";
+        }
+        return comparisonLabel(run);
+    }
+
+    private static String humanModelLabel(String comparisonAxis, EvaluationRunEntity run) {
+        if (COMPARISON_AXIS_EMBEDDING.equals(comparisonAxis)) {
+            return run.getEmbeddingModelId() != null ? run.getEmbeddingModelId().trim() : "";
+        }
+        if (COMPARISON_AXIS_LLM.equals(comparisonAxis)) {
+            return run.getLlmModelId() != null ? run.getLlmModelId().trim() : "";
+        }
+        return humanModelLabel(run);
     }
 
     private static String humanModelLabel(EvaluationRunEntity run) {
@@ -687,6 +715,12 @@ public class LabCampaignService {
         @SuppressWarnings("unchecked")
         Map<String, Object> ret = (Map<String, Object>) bucket.getOrDefault("retrievalOnExecutedWhereApplicable", Map.of());
         out.put("meanRecallAt1", ret.get("meanRecallAt1"));
+        out.put("meanRecallAt3", ret.get("meanRecallAt3"));
+        out.put("meanRecallAt5", ret.get("meanRecallAt5"));
+        out.put("meanMrr", ret.get("meanMrr"));
+        out.put("meanCorrectness", onExecuted.get("meanCorrectness"));
+        out.put("meanFaithfulness", onExecuted.get("meanFaithfulness"));
+        out.put("meanHallucinationRate", onExecuted.get("meanHallucinationRate"));
         out.put("meanLatencyMs", onExecuted.get("meanLatencyMsWherePresent"));
         out.put("scoreGlobal", onExecuted.get("scoreGlobal"));
         out.put("scoreAnswerable", onExecuted.get("scoreAnswerable"));

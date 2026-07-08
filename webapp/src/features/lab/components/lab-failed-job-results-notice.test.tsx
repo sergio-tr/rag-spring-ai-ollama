@@ -33,4 +33,13 @@ describe("LabFailedJobResultsNotice", () => {
     expect(screen.getByTestId("lab-failed-job-run-id")).toHaveTextContent("fc9ea380");
     expect(screen.getByTestId("lab-failed-job-error-message")).toBeInTheDocument();
   });
+
+  it("omits error notice when task status has no message", () => {
+    render(
+      <IntlTestProvider>
+        <LabFailedJobResultsNotice evaluationRunId="run-12345678" taskStatus={null} />
+      </IntlTestProvider>,
+    );
+    expect(screen.queryByTestId("lab-failed-job-error-message")).not.toBeInTheDocument();
+  });
 });

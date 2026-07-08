@@ -26,15 +26,14 @@ const { pushMock, replaceMock } = vi.hoisted(() => ({
   replaceMock: vi.fn(),
 }));
 
-vi.mock("@/navigation", () => ({
-  Link: ({ href, children, className }: { href: string; children: ReactNode; className?: string }) => (
-    <a href={href} className={className}>
-      {children}
-    </a>
-  ),
-  usePathname: () => "/projects",
-  useRouter: () => ({ push: pushMock, refresh: vi.fn(), replace: replaceMock }),
-}));
+vi.mock("@/navigation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/navigation")>();
+  return {
+    ...actual,
+    usePathname: () => "/projects",
+    useRouter: () => ({ push: pushMock, refresh: vi.fn(), replace: replaceMock }),
+  };
+});
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
@@ -108,13 +107,19 @@ vi.mock("@/features/projects/components/NewProjectDialog", () => ({
   ),
 }));
 
-vi.mock("@/features/chat/hooks/use-chat-presets-catalog", () => ({
-  useChatPresetsCatalog: () => ({
-    data: { productPresets: [], experimentalPresets: [] },
-    isLoading: false,
-    isError: false,
-  }),
-}));
+vi.mock("@/features/chat/hooks/use-project-compatible-presets", async () => {
+  const { compatiblePresetsQueryMock } = await import("@/test-utils/compatible-presets-mock");
+  return {
+    useProjectCompatiblePresets: () => compatiblePresetsQueryMock,
+  };
+});
+
+vi.mock("@/features/settings/hooks/use-me-effective-embedding-defaults", async () => {
+  const { effectiveEmbeddingDefaultsMock } = await import("@/test-utils/compatible-presets-mock");
+  return {
+    useMeEffectiveEmbeddingDefaults: () => effectiveEmbeddingDefaultsMock,
+  };
+});
 
 vi.mock("@/features/documents/hooks/use-project-documents", () => ({
   useProjectDocuments: () => ({
@@ -211,8 +216,8 @@ describe("AppSidebar", () => {
   it("renders primary links and pinned settings", () => {
     render(<AppSidebar />, { wrapper: Wrapper });
     expect(screen.getByLabelText("Main")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /projects/i })).toHaveAttribute("href", "/projects");
-    expect(screen.getByRole("link", { name: /settings/i })).toHaveAttribute("href", "/settings");
+    expect(screen.getByRole("link", { name: /projects/i })).toHaveAttribute("href", "/en/projects");
+    expect(screen.getByRole("link", { name: /settings/i })).toHaveAttribute("href", "/en/settings");
     expect(screen.getByText(/rag console/i)).toBeInTheDocument();
   });
 
@@ -220,7 +225,7 @@ describe("AppSidebar", () => {
     sessionStorage.setItem(SETTINGS_LAST_PATH_STORAGE_KEY, "/settings/account");
     render(<AppSidebar />, { wrapper: Wrapper });
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /settings/i })).toHaveAttribute("href", "/settings/account");
+      expect(screen.getByRole("link", { name: /settings/i })).toHaveAttribute("href", "/en/settings/account");
     });
   });
 
@@ -263,14 +268,14 @@ describe("AppSidebar", () => {
     const { getStoredUserRole } = await import("@/lib/user-role");
     vi.mocked(getStoredUserRole).mockReturnValue("ADMIN");
     render(<AppSidebar />, { wrapper: Wrapper });
-    expect(screen.getByRole("link", { name: /^admin$/i })).toHaveAttribute("href", "/admin");
+    expect(screen.getByRole("link", { name: /^admin$/i })).toHaveAttribute("href", "/en/admin");
   });
 
   it("shows Admin link when auth me endpoint returns ADMIN", async () => {
     apiFetchMock.mockResolvedValueOnce({ roleName: "ADMIN" });
     render(<AppSidebar />, { wrapper: Wrapper });
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /^admin$/i })).toHaveAttribute("href", "/admin");
+      expect(screen.getByRole("link", { name: /^admin$/i })).toHaveAttribute("href", "/en/admin");
     });
   });
 
@@ -315,7 +320,7 @@ describe("AppSidebar", () => {
       total: 100,
     };
     render(<AppSidebar />, { wrapper: Wrapper });
-    expect(screen.getByRole("link", { name: /view all projects/i })).toHaveAttribute("href", "/projects");
+    expect(screen.getByRole("link", { name: /view all projects/i })).toHaveAttribute("href", "/en/projects");
   });
 
   it("opens the search dialog", async () => {
@@ -394,14 +399,14 @@ describe("AppSidebar", () => {
     useAppStore.setState({ activeProject: { id: "p1", name: "Project One" } });
     render(<AppSidebar />, { wrapper: Wrapper });
     const chatLink = screen.getByRole("link", { name: /^chat$/i });
-    expect(chatLink).toHaveAttribute("href", "/chat?projectId=p1");
+    expect(chatLink).toHaveAttribute("href", "/en/chat?projectId=p1");
   });
 
   it("main nav Chat link goes to projects when no active project", () => {
     useAppStore.setState({ activeProject: null });
     render(<AppSidebar />, { wrapper: Wrapper });
     const chatLink = screen.getByRole("link", { name: /^chat$/i });
-    expect(chatLink).toHaveAttribute("href", "/projects");
+    expect(chatLink).toHaveAttribute("href", "/en/projects");
   });
 
   it("clears stale active project when it is not in the current list", async () => {

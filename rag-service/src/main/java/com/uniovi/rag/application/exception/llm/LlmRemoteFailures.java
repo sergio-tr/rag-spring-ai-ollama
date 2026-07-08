@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.exception.llm;
 
 import com.uniovi.rag.domain.llm.LlmProvider;
+import com.uniovi.rag.domain.llm.catalog.LlmModelReasonCodes;
 
 /** Factory methods for remote LLM provider failures (non-configuration). */
 public final class LlmRemoteFailures {
@@ -45,7 +46,12 @@ public final class LlmRemoteFailures {
                 operation,
                 model,
                 baseUrl,
-                "LLM model rejected by provider: " + (detail != null ? detail : model),
+                LlmModelReasonCodes.format(
+                        LlmModelReasonCodes.LLM_MODEL_UNAVAILABLE,
+                        "LLM model '"
+                                + model
+                                + "' rejected by provider: "
+                                + (detail != null ? detail : "unknown")),
                 detail,
                 null);
     }
@@ -101,7 +107,9 @@ public final class LlmRemoteFailures {
                 operation,
                 model,
                 baseUrl,
-                "Ollama is not reachable at the configured base URL",
+                LlmModelReasonCodes.format(
+                        LlmModelReasonCodes.LLM_PROVIDER_UNAVAILABLE,
+                        "Ollama is not reachable at the configured base URL"),
                 null,
                 null);
     }

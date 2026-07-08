@@ -14,9 +14,9 @@ import type { AsyncTaskStatusDto, LabJobAcceptedDto } from "@/types/api";
 type PendingResume = Readonly<{ sectionKey: LabJobSectionKey; jobId: string }>;
 
 export type LabJobSessionStore = {
-  /** Persisted via sessionStorage — survives SPA navigations and reloads within the tab. */
+  /** Persisted via sessionStorage - survives SPA navigations and reloads within the tab. */
   records: PersistedLabJobRecord[];
-  /** Ephemeral — not persisted. */
+  /** Ephemeral - not persisted. */
   pendingResume: PendingResume | null;
   resumeNonce: number;
   /** Bumped when user stops watching a job from the session banner. */
@@ -53,6 +53,9 @@ export type LabJobSessionStore = {
   consumePendingResume: (sectionKey: LabJobSectionKey) => PersistedLabJobRecord | null;
 
   pickLatestForSection: (sectionKey: LabJobSectionKey) => PersistedLabJobRecord | null;
+
+  /** Clears all job session state (logout / user-change reset). */
+  resetSession: () => void;
 
   /** Clears volatile fields for tests (persisted records cleared separately). */
   __resetVolatileForTests: () => void;
@@ -204,6 +207,9 @@ export const useLabJobSessionStore = create<LabJobSessionStore>()(
       },
 
       pickLatestForSection: (sectionKey) => pickLatestRecordForSection(get().records, sectionKey),
+
+      resetSession: () =>
+        set({ records: [], pendingResume: null, resumeNonce: 0, forgetWatchNonce: 0 }),
 
       __resetVolatileForTests: () => set({ pendingResume: null, resumeNonce: 0, forgetWatchNonce: 0 }),
     }),

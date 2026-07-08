@@ -444,7 +444,7 @@ public final class RagPresetRetrievalExportSupport {
         try {
             metricsPayload.putAll(enriched);
         } catch (UnsupportedOperationException ignored) {
-            // Immutable caller maps (e.g. Map.of in tests) — inference applies to export copy only.
+            // Immutable caller maps (e.g. Map.of in tests) - inference applies to export copy only.
         }
     }
 

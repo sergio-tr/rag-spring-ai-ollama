@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { loginAsSeedUser } from "../support/helpers";
 
 /**
- * Phase 8C — account export async job surfaces queued/running/terminal or controlled API error (no infinite spinner).
+ * Phase 8C - account export async job surfaces queued/running/terminal or controlled API error (no infinite spinner).
  */
 test.describe("Settings account export @fullstack", () => {
   test("request export reaches terminal, download, or controlled alert @fullstack", async ({ page }) => {

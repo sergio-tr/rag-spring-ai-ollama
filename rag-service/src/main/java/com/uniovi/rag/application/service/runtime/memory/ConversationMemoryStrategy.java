@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.memory;
 
+import com.uniovi.rag.application.service.runtime.optimization.RagLlmCallBudgetPolicy;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
@@ -93,6 +94,32 @@ public class ConversationMemoryStrategy {
                     stages);
         }
 
+        Optional<String> deterministicExpand =
+                ConversationFollowUpResolver.expand(eligible, ctx.userQuery());
+        if (deterministicExpand.isPresent() && !deterministicExpand.get().isBlank()) {
+            ConversationMemorySlice slice = selector.selectSlice(eligible, decision);
+            stages.add(
+                    new ExecutionStageTrace(
+                            "memory_follow_up_expand",
+                            0L,
+                            ExecutionStageOutcome.SUCCESS,
+                            "status=DETERMINISTIC"));
+            stages.add(
+                    new ExecutionStageTrace(
+                            "memory_finalize_planning_input",
+                            0L,
+                            ExecutionStageOutcome.SUCCESS,
+                            "final_source=deterministic_follow_up"));
+            return new ConversationMemoryExecutionResult(
+                    ConversationMemoryOutcome.MEMORY_APPLIED,
+                    Optional.of(slice),
+                    false,
+                    false,
+                    false,
+                    deterministicExpand.get(),
+                    stages);
+        }
+
         ConversationMemorySlice slice = selector.selectSlice(eligible, decision);
         stages.add(new ExecutionStageTrace(
                 "memory_select_slice",
@@ -116,51 +143,35 @@ public class ConversationMemoryStrategy {
                     stages);
         }
 
-        Optional<String> deterministicExpand =
-                ConversationFollowUpResolver.expand(eligible, ctx.userQuery());
-        if (deterministicExpand.isPresent() && !deterministicExpand.get().isBlank()) {
-            stages.add(
-                    new ExecutionStageTrace(
-                            "memory_follow_up_expand",
-                            0L,
-                            ExecutionStageOutcome.SUCCESS,
-                            "status=DETERMINISTIC"));
-            stages.add(
-                    new ExecutionStageTrace(
-                            "memory_finalize_planning_input",
-                            0L,
-                            ExecutionStageOutcome.SUCCESS,
-                            "final_source=deterministic_follow_up"));
-            return new ConversationMemoryExecutionResult(
-                    ConversationMemoryOutcome.MEMORY_APPLIED,
-                    Optional.of(slice),
-                    false,
-                    false,
-                    false,
-                    deterministicExpand.get(),
-                    stages);
-        }
-
         boolean condensationAttempted = decision.attemptCondensation();
+        RagLlmCallBudgetPolicy.SkipDecision condenseSkip =
+                RagLlmCallBudgetPolicy.condenseDecision(ctx, eligible, ctx.userQuery());
         String condensed = "";
         boolean used = false;
         boolean fallbackApplied = false;
         ExecutionStageOutcome condenseOutcome = ExecutionStageOutcome.SUCCESS;
         String condenseMsg = "status=OK";
-        try {
-            condensed =
-                    condensationAttempted
-                            ? condensor.condense(ctx, slice, ctx.userQuery(), preMemoryPlanningInputText)
-                            : "";
-            if (condensed == null || condensed.isBlank()) {
+        if (condensationAttempted && condenseSkip.skip()) {
+            condensed = preMemoryPlanningInputText;
+            used = false;
+            fallbackApplied = false;
+            condenseMsg = "status=SKIPPED reason=" + condenseSkip.reason();
+        } else {
+            try {
+                condensed =
+                        condensationAttempted
+                                ? condensor.condense(ctx, slice, ctx.userQuery(), preMemoryPlanningInputText)
+                                : "";
+                if (condensed == null || condensed.isBlank()) {
+                    condenseOutcome = ExecutionStageOutcome.FAILED;
+                    condenseMsg = "status=BLANK_OUTPUT";
+                } else {
+                    used = condensationAttempted && !condensed.equals(preMemoryPlanningInputText);
+                }
+            } catch (Exception e) {
                 condenseOutcome = ExecutionStageOutcome.FAILED;
-                condenseMsg = "status=BLANK_OUTPUT";
-            } else {
-                used = true;
+                condenseMsg = "status=EXCEPTION message=" + safeMsg(e);
             }
-        } catch (Exception e) {
-            condenseOutcome = ExecutionStageOutcome.FAILED;
-            condenseMsg = "status=EXCEPTION message=" + safeMsg(e);
         }
         stages.add(new ExecutionStageTrace(
                 "memory_condense",

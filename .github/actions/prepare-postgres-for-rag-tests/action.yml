@@ -13,12 +13,22 @@ description: Apply CI Postgres extensions and integration test DB (vectordb + te
 runs:
   using: composite
   steps:
+    - name: Prepare apt on GHA runner
+      shell: bash
+      run: bash .github/scripts/disable-broken-gha-apt-mirrors.sh
+
     - name: Install PostgreSQL client
       shell: bash
       run: |
         set -euo pipefail
+        if command -v psql >/dev/null 2>&1 && command -v pg_isready >/dev/null 2>&1; then
+          echo "postgresql-client tools already available ($(psql --version))"
+          exit 0
+        fi
         sudo apt-get update
-        sudo apt-get install -y postgresql-client
+        sudo apt-get install -y --no-install-recommends postgresql-client
+        command -v psql >/dev/null
+        command -v pg_isready >/dev/null
 
     - name: Wait for Postgres, extensions, testdb, test-init
       shell: bash

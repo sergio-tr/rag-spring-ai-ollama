@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Optional;
 
 /**
- * P40: synchronous {@code POST} definition ZIP import preview — delegates only to {@link RuntimeTraceRegressionSuiteDefinitionImportPreviewService}.
+ * P40: synchronous {@code POST} definition ZIP import preview - delegates only to {@link RuntimeTraceRegressionSuiteDefinitionImportPreviewService}.
  */
 @RestController
 @RequestMapping("${rag.api.product-base-path}")

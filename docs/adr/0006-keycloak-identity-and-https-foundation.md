@@ -1,4 +1,4 @@
-# ADR 0006 — Keycloak identity and HTTPS foundation
+# ADR 0006 - Keycloak identity and HTTPS foundation
 
 ## Status
 
@@ -11,7 +11,7 @@ The platform requires **serious security** for a multi-user product and defensib
 ## Decision
 
 1. **Keycloak** is the chosen **external identity provider** for Identity & Access in the target architecture ([target-architecture.md](../architecture/target-architecture.md)).
-2. **HTTPS** is mandatory for **target** deployments; **TLS termination** (reverse proxy vs application) is a structural choice documented here at ADR level — concrete compose/nginx layout lives in module READMEs as implementation evolves.
+2. **HTTPS** is mandatory for **target** deployments; **TLS termination** (reverse proxy vs application) is a structural choice documented here at ADR level - concrete compose/nginx layout lives in module READMEs as implementation evolves.
 3. Promotion of this ADR does **not** by itself complete integration work; it **freezes** the direction of travel.
 
 ## Consequences

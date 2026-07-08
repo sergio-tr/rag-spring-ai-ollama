@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** T-M5-BE-doc-bound — document-bound heuristic for Chat quality cases QC-08, QC-10. */
+/** T-M5-BE-doc-bound - document-bound heuristic for Chat quality cases QC-08, QC-10. */
 class DocumentBoundQuestionPolicyTest {
 
     @Test

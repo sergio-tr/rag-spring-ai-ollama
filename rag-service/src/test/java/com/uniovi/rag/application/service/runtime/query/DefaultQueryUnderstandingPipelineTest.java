@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.query;
 
+import com.uniovi.rag.testsupport.config.TestConfigurablePromptResolver;
 import com.uniovi.rag.testsupport.llm.ChatGenerationModelSelectorTestSupport;
 import com.uniovi.rag.configuration.RagClassifierProperties;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
@@ -25,8 +26,9 @@ import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
 import com.uniovi.rag.infrastructure.classifier.ClassifierInferenceResponse;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
-import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
+import com.uniovi.rag.application.service.runtime.query.expand.QueryExpander;
+import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import io.micrometer.tracing.Tracer;
 import org.springframework.beans.factory.ObjectProvider;
 import java.util.List;
@@ -35,7 +37,8 @@ import java.util.UUID;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import org.mockito.Answers;
-import org.springframework.ai.chat.client.ChatClient;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
+import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -44,6 +47,12 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class DefaultQueryUnderstandingPipelineTest {
+
+    private static QueryExpansionStage noOpExpansionStage() {
+        QueryExpander expander = mock(QueryExpander.class);
+        when(expander.expand(anyString())).thenAnswer(inv -> inv.getArgument(0));
+        return new QueryExpansionStage(expander);
+    }
 
     private static RagConfig rag(boolean nerEnabled, boolean toolsEnabled) {
         return new RagConfig(
@@ -171,7 +180,7 @@ class DefaultQueryUnderstandingPipelineTest {
         QueryAnalyser analyser = mock(QueryAnalyser.class);
         when(analyser.analyse(anyString())).thenReturn(new JSONObject("{\"date\":[],\"place\":[],\"attendees\":[],\"topics\":[],\"mentionedEntities\":[],\"answerType\":\"unknown\",\"comparisonType\":\"none\",\"temporalContext\":\"none\"}"));
 
-        ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
+        ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor = mock(ProviderAwareSecondaryLlmExecutor.class);
         String rewriteJson = """
                 {
                   "rewrittenQueryText": "list all items",
@@ -182,20 +191,24 @@ class DefaultQueryUnderstandingPipelineTest {
                   "constraints": []
                 }
                 """;
-        when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content())
+        when(secondaryLlmExecutor.complete(
+                        any(ExecutionContext.class),
+                        eq("query-rewrite"),
+                        anyString(),
+                        anyString(),
+                        eq(ProviderAwareSecondaryLlmExecutor.SECONDARY_TASK_DEFAULT_TEMPERATURE)))
                 .thenReturn(rewriteJson);
 
         DefaultQueryClassifierAdapter classifierAdapter = classifierAdapter(classifier);
         DefaultNamedEntityExtractionAdapter nerAdapter = new DefaultNamedEntityExtractionAdapter(analyser);
-        DefaultStructuredQueryRewriter rewriter =
-                new DefaultStructuredQueryRewriter(chatClient, ChatGenerationModelSelectorTestSupport.permissiveMock());
+        DefaultStructuredQueryRewriter rewriter = new DefaultStructuredQueryRewriter(secondaryLlmExecutor, TestConfigurablePromptResolver.defaultsOnly());
         DefaultQueryIntentResolver intentResolver = new DefaultQueryIntentResolver();
         DefaultExpectedAnswerShapeResolver shapeResolver = new DefaultExpectedAnswerShapeResolver();
         DefaultAmbiguityAssessmentService ambiguity = new DefaultAmbiguityAssessmentService();
 
         DefaultQueryUnderstandingPipeline pipeline =
                 new DefaultQueryUnderstandingPipeline(
-                        classifierAdapter, nerAdapter, rewriter, intentResolver, shapeResolver, ambiguity);
+                        classifierAdapter, nerAdapter, rewriter, intentResolver, shapeResolver, ambiguity, noOpExpansionStage());
 
         QueryPlan plan = pipeline.buildPlan(ctx(rag, "  list   all  items "));
 
@@ -204,18 +217,19 @@ class DefaultQueryUnderstandingPipelineTest {
         assertEquals("list all items", plan.normalizedQueryText());
         assertEquals("list all items", plan.rewrittenQueryText());
         assertTrue(plan.queryIntent() != null);
-        assertTrue(plan.pipelineNotes().size() >= 7);
+        assertTrue(plan.pipelineNotes().size() >= 8);
 
-        // Frozen stage ordering: first seven notes correspond to the QU stages in-order.
+        // Frozen stage ordering: first eight notes correspond to the QU stages in-order.
         assertTrue(plan.pipelineNotes().get(0).startsWith("qu_normalize "));
-        assertTrue(plan.pipelineNotes().get(1).startsWith("qu_classify "));
-        assertTrue(plan.pipelineNotes().get(1).contains("classifierModelId=cls"));
+        assertTrue(plan.pipelineNotes().get(1).startsWith("qu_expand "));
+        assertTrue(plan.pipelineNotes().get(2).startsWith("qu_classify "));
+        assertTrue(plan.pipelineNotes().get(2).contains("classifierModelId=cls"));
         verify(classifier).classifyInference("list all items", "cls");
-        assertTrue(plan.pipelineNotes().get(2).startsWith("qu_extract_entities "));
-        assertTrue(plan.pipelineNotes().get(3).startsWith("qu_rewrite "));
-        assertTrue(plan.pipelineNotes().get(4).startsWith("qu_resolve_intent "));
-        assertTrue(plan.pipelineNotes().get(5).startsWith("qu_resolve_answer_shape "));
-        assertTrue(plan.pipelineNotes().get(6).startsWith("qu_assess_ambiguity "));
+        assertTrue(plan.pipelineNotes().get(3).startsWith("qu_extract_entities "));
+        assertTrue(plan.pipelineNotes().get(4).startsWith("qu_rewrite "));
+        assertTrue(plan.pipelineNotes().get(5).startsWith("qu_resolve_intent "));
+        assertTrue(plan.pipelineNotes().get(6).startsWith("qu_resolve_answer_shape "));
+        assertTrue(plan.pipelineNotes().get(7).startsWith("qu_assess_ambiguity "));
     }
 
     @Test
@@ -273,7 +287,8 @@ class DefaultQueryUnderstandingPipelineTest {
                         rewriter,
                         intentResolver,
                         shapeResolver,
-                        ambiguityAssessmentService);
+                        ambiguityAssessmentService,
+                        noOpExpansionStage());
 
         ExecutionContext executionContext = ctxPlanning(cfg, null, "   ");
         QueryPlan plan = pipeline.buildPlan(executionContext);
@@ -329,18 +344,19 @@ class DefaultQueryUnderstandingPipelineTest {
                         rewriter,
                         intentResolver,
                         shapeResolver,
-                        ambiguityAssessmentService);
+                        ambiguityAssessmentService,
+                        noOpExpansionStage());
 
         QueryPlan plan = pipeline.buildPlan(ctx(cfg, "q"));
 
-        assertTrue(plan.pipelineNotes().get(1).contains("qu_classify"));
-        assertTrue(plan.pipelineNotes().get(1).contains("qu_status=FALLBACK"));
+        assertTrue(plan.pipelineNotes().get(2).contains("qu_classify"));
+        assertTrue(plan.pipelineNotes().get(2).contains("qu_status=FALLBACK"));
 
-        assertTrue(plan.pipelineNotes().get(2).contains("qu_extract_entities"));
-        assertTrue(plan.pipelineNotes().get(2).contains("qu_status=ERROR"));
-
-        assertTrue(plan.pipelineNotes().get(3).contains("qu_rewrite"));
+        assertTrue(plan.pipelineNotes().get(3).contains("qu_extract_entities"));
         assertTrue(plan.pipelineNotes().get(3).contains("qu_status=ERROR"));
+
+        assertTrue(plan.pipelineNotes().get(4).contains("qu_rewrite"));
+        assertTrue(plan.pipelineNotes().get(4).contains("qu_status=ERROR"));
     }
 
     @Test
@@ -382,11 +398,12 @@ class DefaultQueryUnderstandingPipelineTest {
                         rewriter,
                         intentResolver,
                         shapeResolver,
-                        ambiguityAssessmentService);
+                        ambiguityAssessmentService,
+                        noOpExpansionStage());
 
         QueryPlan plan = pipeline.buildPlan(ctx(cfg, "x"));
-        assertTrue(plan.pipelineNotes().get(3).contains("qu_status=DISABLED"));
-        assertTrue(plan.pipelineNotes().get(1).contains("qu_status=ERROR"));
+        assertTrue(plan.pipelineNotes().get(4).contains("qu_status=DISABLED"));
+        assertTrue(plan.pipelineNotes().get(2).contains("qu_status=ERROR"));
     }
 
     @Test
@@ -428,10 +445,11 @@ class DefaultQueryUnderstandingPipelineTest {
                         rewriter,
                         intentResolver,
                         shapeResolver,
-                        ambiguityAssessmentService);
+                        ambiguityAssessmentService,
+                        noOpExpansionStage());
 
         QueryPlan plan = pipeline.buildPlan(ctx(cfg, "list"));
-        assertTrue(plan.pipelineNotes().get(3).contains("qu_status=DISABLED"));
+        assertTrue(plan.pipelineNotes().get(4).contains("qu_status=DISABLED"));
     }
 
     @Test
@@ -473,10 +491,91 @@ class DefaultQueryUnderstandingPipelineTest {
                         rewriter,
                         intentResolver,
                         shapeResolver,
-                        ambiguityAssessmentService);
+                        ambiguityAssessmentService,
+                        noOpExpansionStage());
 
         QueryPlan plan = pipeline.buildPlan(ctx(cfg, "q"));
-        assertTrue(plan.pipelineNotes().get(2).contains("qu_status=DISABLED"));
+        assertTrue(plan.pipelineNotes().get(3).contains("qu_status=DISABLED"));
+    }
+
+    @Test
+    void buildPlan_expansionEnabled_passesExpandedTextToClassifier() {
+        RagConfig cfg =
+                new RagConfig(
+                        true,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        5,
+                        0.2,
+                        "llm",
+                        "emb",
+                        "cls",
+                        "reason",
+                        false,
+                        RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                        RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                        MaterializationStrategy.STRUCTURED_SEARCH);
+
+        QueryExpander expander = mock(QueryExpander.class);
+        when(expander.expand("hello")).thenReturn("expanded hello");
+        QueryExpansionStage expansionStage = new QueryExpansionStage(expander);
+
+        QueryClassifierAdapter classifierAdapter = mock(QueryClassifierAdapter.class);
+        when(classifierAdapter.classify(any(), eq("expanded hello")))
+                .thenReturn(
+                        new QueryClassifierAdapter.ClassifierOutcome(
+                                "OK",
+                                Optional.empty(),
+                                ClassifierStatus.OK,
+                                "m",
+                                "OK"));
+
+        NamedEntityExtractionAdapter ner = mock(NamedEntityExtractionAdapter.class);
+        when(ner.extract(any(), eq("expanded hello"))).thenReturn(EntityExtractionResult.emptyWithNote(""));
+
+        StructuredQueryRewriter rewriter = mock(StructuredQueryRewriter.class);
+        when(rewriter.rewrite(any(), any(), anyString(), any(), any(), any()))
+                .thenReturn(StructuredRewriteResult.identityDisabled("expanded hello", null));
+
+        QueryIntentResolver intentResolver = mock(QueryIntentResolver.class);
+        when(intentResolver.resolve(any(), any(), anyString(), any(), any(), any()))
+                .thenReturn(QueryIntent.UNKNOWN);
+
+        ExpectedAnswerShapeResolver shapeResolver = mock(ExpectedAnswerShapeResolver.class);
+        when(shapeResolver.resolve(any(), any())).thenReturn(ExpectedAnswerShape.UNKNOWN);
+
+        AmbiguityAssessmentService ambiguityAssessmentService = mock(AmbiguityAssessmentService.class);
+        when(ambiguityAssessmentService.assess(any(), any(), anyString(), any(), any(), any()))
+                .thenReturn(AmbiguityAssessment.sufficient());
+
+        DefaultQueryUnderstandingPipeline pipeline =
+                new DefaultQueryUnderstandingPipeline(
+                        classifierAdapter,
+                        ner,
+                        rewriter,
+                        intentResolver,
+                        shapeResolver,
+                        ambiguityAssessmentService,
+                        expansionStage);
+
+        QueryPlan plan = pipeline.buildPlan(ctx(cfg, "hello"));
+
+        assertTrue(plan.queryExpansion().applied());
+        assertEquals("expanded hello", plan.queryExpansion().expandedQuery());
+        assertTrue(plan.pipelineNotes().stream().anyMatch(n -> n.contains("qu_expand") && n.contains("applied=true")));
+        verify(classifierAdapter).classify(any(), eq("expanded hello"));
+        verify(ner).extract(any(), eq("expanded hello"));
     }
 
     @SuppressWarnings("unchecked")

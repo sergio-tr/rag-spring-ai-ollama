@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ApiError, apiFetch, apiProductPath, getSafeApiErrorMessage } from "@/lib/api-client";
+import { resolveUserFacingErrorDisplay } from "@/lib/user-facing-error-messages";
 import { cn } from "@/lib/utils";
 import type { ProjectDocumentDto } from "@/types/api";
 import { useProjectIndexProfile } from "@/features/projects/hooks/use-project-index-profile";
@@ -26,9 +27,27 @@ function extractJsonDetailFromUnknown(parsed: unknown): string | null {
   return null;
 }
 
+function extractApiErrorCode(parsed: unknown): string | null {
+  if (!parsed || typeof parsed !== "object") return null;
+  const o = parsed as Record<string, unknown>;
+  const nested = o.error as Record<string, unknown> | undefined;
+  const code = o.code ?? nested?.code;
+  return typeof code === "string" && code.trim() ? code.trim() : null;
+}
+
 function uploadErrorDetail(err: unknown, t: (key: string) => string): string | null {
   if (!err) return null;
   if (err instanceof ApiError) {
+    const explicitCode = extractApiErrorCode(err.meta?.parsedJson);
+    if (explicitCode) {
+      const display = resolveUserFacingErrorDisplay({
+        raw: explicitCode,
+        t,
+        fallback: t("uploadError"),
+        explicitCode,
+      });
+      if (display.primary) return display.primary;
+    }
     if (err.status === 503) return t("uploadErrorOllamaNotReady");
     if (err.status === 409) return t("uploadErrorDuplicate");
     if (err.status === 401 || err.status === 403) return t("uploadErrorUnauthorized");
@@ -94,7 +113,7 @@ function ActiveIndexProfileCallout({ projectId }: Readonly<{ projectId: string |
       ) : profile.data ? (
         <ul className="text-muted-foreground mt-2 grid gap-1 sm:grid-cols-2">
           <li>
-            <span className="font-medium text-foreground">strategy:</span> {profile.data.materializationStrategy ?? "—"}
+            <span className="font-medium text-foreground">strategy:</span> {profile.data.materializationStrategy ?? "-"}
           </li>
           <li>
             <span className="font-medium text-foreground">metadata:</span>{" "}
@@ -102,7 +121,7 @@ function ActiveIndexProfileCallout({ projectId }: Readonly<{ projectId: string |
           </li>
           <li className="sm:col-span-2">
             <span className="font-medium text-foreground">embedding:</span>{" "}
-            {profile.data.embeddingModelId?.trim() ? profile.data.embeddingModelId : "—"}
+            {profile.data.embeddingModelId?.trim() ? profile.data.embeddingModelId : "-"}
           </li>
           <li>
             <span className="font-medium text-foreground">chunk:</span> {profile.data.chunkMaxChars}

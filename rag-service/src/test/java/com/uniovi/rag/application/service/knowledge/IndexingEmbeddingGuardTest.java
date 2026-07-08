@@ -38,4 +38,21 @@ class IndexingEmbeddingGuardTest {
         assertThatThrownBy(() -> new RagIndexingEmbeddingProperties(100, 50, true, 0))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void effectiveWholeDocumentEmbedMaxChars_ignoresChunkCap() {
+        var props = new RagIndexingEmbeddingProperties(2048, 400, true, 0.85);
+        var guard = new IndexingEmbeddingGuard(props);
+        // The 400-char chunk-splitting cap must not bind here: only maxInputChars * ratio applies.
+        assertThat(guard.effectiveWholeDocumentEmbedMaxChars()).isEqualTo(1740);
+        assertThat(guard.effectiveWholeDocumentEmbedMaxChars())
+                .isGreaterThan(guard.effectiveEmbedMaxChars(400));
+    }
+
+    @Test
+    void effectiveWholeDocumentEmbedMaxChars_stillFloorsAtSixtyFour() {
+        var props = new RagIndexingEmbeddingProperties(50, 400, true, 0.5);
+        var guard = new IndexingEmbeddingGuard(props);
+        assertThat(guard.effectiveWholeDocumentEmbedMaxChars()).isEqualTo(64);
+    }
 }

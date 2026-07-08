@@ -19,7 +19,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * P38: synchronous {@code GET} definition ZIP export — delegates only to {@link RuntimeTraceRegressionSuiteDefinitionExportService}.
+ * P38: synchronous {@code GET} definition ZIP export - delegates only to {@link RuntimeTraceRegressionSuiteDefinitionExportService}.
  */
 @RestController
 @RequestMapping("${rag.api.product-base-path}")

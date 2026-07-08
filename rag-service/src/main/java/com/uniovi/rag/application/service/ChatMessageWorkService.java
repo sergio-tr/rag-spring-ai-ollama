@@ -7,6 +7,8 @@ import com.uniovi.rag.infrastructure.persistence.MessageRepository;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
+import com.uniovi.rag.application.service.runtime.FinalAnswerMarkdownSanitizer;
+import com.uniovi.rag.application.service.runtime.ReasoningBlockSanitizer;
 import com.uniovi.rag.interfaces.rest.support.UserFacingErrorSanitizer;
 import com.uniovi.rag.application.result.chat.ChatSource;
 import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
@@ -90,7 +92,12 @@ public class ChatMessageWorkService {
             Duration duration,
             Map<String, Object> chatTelemetry) {
         MessageEntity m = messageRepository.findById(assistantMessageId).orElseThrow();
-        m.setContent(answer != null ? answer : "");
+        String visible =
+                answer == null
+                        ? ""
+                        : FinalAnswerMarkdownSanitizer.sanitize(
+                                ReasoningBlockSanitizer.sanitizeForUser(answer));
+        m.setContent(visible);
         m.setSources(ChatSourceMapper.toPersistedMapsFromInternal(sources));
         m.setQueryType(queryType);
         m.setTraceId(traceId);

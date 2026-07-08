@@ -14,7 +14,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 # shellcheck source=lib/common.sh
 source "${SCRIPT_DIR}/lib/common.sh"
 
-EVIDENCE_DIR="${REPO_ROOT}/.cursor/context/evidence/m1-ci-e2e-gate"
+EVIDENCE_DIR="${REPO_ROOT}/docs/evidence/m1-ci-e2e-gate"
 LOG_ROOT="${M1_EVIDENCE_DIR:-${EVIDENCE_DIR}/logs/local-gate-$(date -u +%Y%m%dT%H%M%SZ)}"
 RESULTS_TSV="${EVIDENCE_DIR}/results.tsv"
 SUMMARY_MD="${EVIDENCE_DIR}/LOCAL_GATE_SUMMARY.md"
@@ -68,10 +68,10 @@ finish() {
   local code=$?
   if [[ "${code}" -eq 0 ]]; then
     write_summary "PASSED"
-    log "PASSED — summary: ${SUMMARY_MD}"
+    log "PASSED - summary: ${SUMMARY_MD}"
   else
     write_summary "FAILED"
-    log "FAILED at: ${FAIL_STEP:-unknown} — summary: ${SUMMARY_MD}"
+    log "FAILED at: ${FAIL_STEP:-unknown} - summary: ${SUMMARY_MD}"
   fi
   exit "${code}"
 }
@@ -165,7 +165,7 @@ if [[ "${DEV_GATE_SKIP_E2E:-0}" != "1" ]]; then
     exit 1
   fi
 else
-  log "DEV_GATE_SKIP_E2E=1 — skipping Playwright lanes"
+  log "DEV_GATE_SKIP_E2E=1 - skipping Playwright lanes"
   record_skipped "e2e-smoke-ci-fast" "DEV_GATE_SKIP_E2E"
   record_skipped "playwright-api-smoke" "DEV_GATE_SKIP_E2E"
   record_skipped "e2e-fullstack-critical" "DEV_GATE_SKIP_E2E"

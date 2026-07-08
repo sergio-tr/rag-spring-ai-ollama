@@ -27,7 +27,7 @@ import { authHeadersFromPage, productApiUrl } from "../support/helpers";
 
 const EVIDENCE_DIR = path.resolve(
   __dirname,
-  "../../../.cursor/evidence/final-lab-rag-closure/embeddings",
+  "../../../docs/evidence/final-lab-rag-closure/embeddings",
 );
 const LOG_PATH = path.join(EVIDENCE_DIR, "e2e-embedding-evidence.log");
 
@@ -116,7 +116,7 @@ test.describe("Closure LAB embedding model evidence @closure @fullstack", () => 
       expect(reqSnaps.every((id) => typeof id === "string" && id.trim().length > 0)).toBe(true);
       evidenceLog(`client sent indexSnapshotIds count=${reqSnaps.length}`);
     } else {
-      evidenceLog("indexSnapshotIds omitted — backend auto-aligns snapshots");
+      evidenceLog("indexSnapshotIds omitted - backend auto-aligns snapshots");
     }
 
     const job = await waitForSingleActiveLabJob(page, "EMBEDDING_RETRIEVAL");

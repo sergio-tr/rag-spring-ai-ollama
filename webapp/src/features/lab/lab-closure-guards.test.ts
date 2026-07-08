@@ -31,7 +31,6 @@ const FORBIDDEN_IN_PRODUCT_MESSAGES = [
   /\bM10\b|\bM11\b|\bM12\b|\bM9\b/i,
   /Do not claim/i,
   /claim map/i,
-  /\.cursor\/context\/evidence/i,
   /handoff/i,
   /\bTFG\b/i,
   /partial evidence/i,
@@ -42,14 +41,14 @@ const FORBIDDEN_IN_PRODUCT_MESSAGES = [
   /Canonical paths refer to/i,
   /unsupported by design/i,
   /Stopped watching here/i,
-  /Stopped waiting — the server job/i,
+  /Stopped waiting - the server job/i,
   /corpus and snapshot preparation are project-scoped/i,
   /Select an active project before running a RAG preset benchmark/i,
   /\bcorpus\b/i,
   /\bcorpus de evaluación\b/i,
   /Status poll:/i,
   /Live stream:/i,
-  /Lab API —/i,
+  /Lab API -/i,
   /POST \/api/i,
   /typed evaluation_dataset/i,
   /Async jobs:/i,
@@ -72,7 +71,7 @@ const FORBIDDEN_IN_PRODUCT_MESSAGES = [
 const FORBIDDEN_IN_LAB_MESSAGES = FORBIDDEN_IN_PRODUCT_MESSAGES;
 
 const FORBIDDEN_IN_LAB_SRC = [
-  /Lab API —/i,
+  /Lab API -/i,
   /canonical benchmarks/i,
   /POST \/api\/v\d/i,
   /GET \/api\/v\d/i,

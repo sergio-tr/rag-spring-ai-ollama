@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.chat.async;
 
 import com.uniovi.rag.application.exception.RagServiceException;
+import com.uniovi.rag.application.service.chat.ChatRetrievalSourceContributor;
 import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
 import com.uniovi.rag.application.result.chat.ChatSource;
 import com.uniovi.rag.application.result.chat.QueryResponse;
@@ -12,6 +13,9 @@ import com.uniovi.rag.application.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.application.service.evaluation.async.LabJobHandler;
 import com.uniovi.rag.application.service.chat.ChatStreamChunks;
 import com.uniovi.rag.application.service.runtime.execution.RuntimeQueryExecutionService;
+import com.uniovi.rag.application.service.runtime.observability.ChatLatencyCollector;
+import com.uniovi.rag.application.service.runtime.observability.ChatLatencyTelemetry;
+import com.uniovi.rag.configuration.RagRuntimeProperties;
 import com.uniovi.rag.infrastructure.observability.RuntimeObservability;
 import java.time.Duration;
 import org.springframework.beans.factory.ObjectProvider;
@@ -38,17 +42,23 @@ public class ChatMessageJobHandler implements LabJobHandler {
     private final RuntimeQueryExecutionService runtimeQueryExecutionService;
     private final ChatJobCancellationRegistry cancellationRegistry;
     private final ChatMessageWorkService chatMessageWorkService;
+    private final ChatRetrievalSourceContributor chatRetrievalSourceContributor;
     private final ObjectProvider<RuntimeObservability> runtimeObservability;
+    private final RagRuntimeProperties ragRuntimeProperties;
 
     public ChatMessageJobHandler(
             RuntimeQueryExecutionService runtimeQueryExecutionService,
             ChatJobCancellationRegistry cancellationRegistry,
             ChatMessageWorkService chatMessageWorkService,
-            ObjectProvider<RuntimeObservability> runtimeObservability) {
+            ChatRetrievalSourceContributor chatRetrievalSourceContributor,
+            ObjectProvider<RuntimeObservability> runtimeObservability,
+            RagRuntimeProperties ragRuntimeProperties) {
         this.runtimeQueryExecutionService = runtimeQueryExecutionService;
         this.cancellationRegistry = cancellationRegistry;
         this.chatMessageWorkService = chatMessageWorkService;
+        this.chatRetrievalSourceContributor = chatRetrievalSourceContributor;
         this.runtimeObservability = runtimeObservability;
+        this.ragRuntimeProperties = ragRuntimeProperties;
     }
 
     @Override
@@ -102,8 +112,14 @@ public class ChatMessageJobHandler implements LabJobHandler {
                 return;
             }
             QueryResponse qr =
-                    runtimeQueryExecutionService.generateResponseForChat(
-                            userContent, llmModel, userId, projectId, conversationId, docFilter, userMessageId);
+                    enrichSourcesIfMissing(
+                            runtimeQueryExecutionService.generateResponseForChat(
+                                    userContent, llmModel, userId, projectId, conversationId, docFilter, userMessageId),
+                            userId,
+                            projectId,
+                            conversationId,
+                            docFilter,
+                            userContent);
             String answer = qr.getAnswer() != null ? qr.getAnswer() : "";
             StringBuilder accumulated = new StringBuilder();
             for (String part : ChatStreamChunks.chunkForStream(answer)) {
@@ -132,7 +148,10 @@ public class ChatMessageJobHandler implements LabJobHandler {
                     conversationId,
                     projectId,
                     qr.getSources() != null ? qr.getSources().size() : 0);
+            long persistenceStart = System.nanoTime();
             persistAssistantSuccess(taskId, conversationId, assistantId, mutation, qr, answer, llmModel, start);
+            long persistenceMs = (System.nanoTime() - persistenceStart) / 1_000_000L;
+            logChatLatencySummary(taskId, llmModel, qr, start, persistenceMs, 0L);
         } catch (RagServiceException e) {
             log.warn("Chat job {} failed: {}", taskId, e.getMessage());
             recordChatFailure(e.getErrorCode() != null ? e.getErrorCode().name() : "unknown");
@@ -185,6 +204,34 @@ public class ChatMessageJobHandler implements LabJobHandler {
         return true;
     }
 
+  /** When the main pipeline omits sources (e.g. deterministic tool route), attach scoped retrieval evidence. */
+    private QueryResponse enrichSourcesIfMissing(
+            QueryResponse qr,
+            UUID userId,
+            UUID projectId,
+            UUID conversationId,
+            List<String> docFilter,
+            String userContent) {
+        if (qr == null || (qr.getSources() != null && !qr.getSources().isEmpty())) {
+            return qr;
+        }
+        if (userContent == null || userContent.isBlank()) {
+            return qr;
+        }
+        List<Map<String, Object>> backfill =
+                chatRetrievalSourceContributor.buildSources(userId, projectId, conversationId, docFilter, userContent);
+        if (backfill.isEmpty()) {
+            return qr;
+        }
+        List<ChatSource> sources = ChatSourceMapper.fromPersistedMaps(backfill);
+        if (qr.isUsedTool()) {
+            return QueryResponse.fromToolWithSources(
+                    qr.getAnswer(), qr.getToolUsed(), qr.getQueryType(), sources, qr.getChatTelemetry());
+        }
+        return QueryResponse.fromLLMWithSources(
+                qr.getAnswer(), qr.getQueryType(), sources, qr.getChatTelemetry());
+    }
+
     private void persistAssistantSuccess(
             UUID taskId,
             UUID conversationId,
@@ -225,6 +272,25 @@ public class ChatMessageJobHandler implements LabJobHandler {
         if (obs != null) {
             obs.chatFailed(errorCode);
         }
+    }
+
+    private void logChatLatencySummary(
+            UUID taskId,
+            String llmModel,
+            QueryResponse qr,
+            Instant start,
+            long persistenceMs,
+            long sseDispatchMs) {
+        long totalMs = Duration.between(start, Instant.now()).toMillis();
+        Map<String, Object> tel = qr.getChatTelemetry() != null ? qr.getChatTelemetry() : Map.of();
+        Map<String, Object> fields =
+                ChatLatencyCollector.buildSummaryFields(totalMs, persistenceMs, sseDispatchMs, 0L, tel);
+        if (tel.get("presetCode") != null) {
+            fields.put("presetCode", tel.get("presetCode"));
+        }
+        String secondaryModel =
+                ragRuntimeProperties.hasSecondaryModel() ? ragRuntimeProperties.effectiveSecondaryModel() : null;
+        ChatLatencyTelemetry.logSummary(taskId.toString(), llmModel, secondaryModel, fields);
     }
 
     private static List<Map<String, Object>> buildPipelineSteps(QueryResponse qr) {

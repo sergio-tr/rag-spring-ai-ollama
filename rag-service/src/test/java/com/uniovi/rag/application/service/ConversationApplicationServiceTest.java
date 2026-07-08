@@ -18,6 +18,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
+import com.uniovi.rag.application.service.chat.IndexAwareChatPresetDefaultService;
 import com.uniovi.rag.application.service.chat.RuntimeConfigurationInvalidException;
 import com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
@@ -78,6 +79,9 @@ class ConversationApplicationServiceTest {
     private ChatPresetDefaults chatPresetDefaults;
 
     @Mock
+    private IndexAwareChatPresetDefaultService indexAwareChatPresetDefaultService;
+
+    @Mock
     private LabExperimentalPresetCatalogService experimentalPresetCatalogService;
 
     @Mock
@@ -88,7 +92,12 @@ class ConversationApplicationServiceTest {
 
     @BeforeEach
     void stubChatPresetDefaults() {
-        lenient().when(chatPresetDefaults.loadDeterministicDefaultPreset()).thenReturn(Optional.empty());
+        lenient()
+                .when(indexAwareChatPresetDefaultService.resolveDefaultPresetId(any(), any()))
+                .thenReturn(Optional.of(ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID));
+        lenient()
+                .when(presetService.requireVisiblePreset(any(), eq(ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID)))
+                .thenAnswer(inv -> mock(RagPresetEntity.class));
         lenient()
                 .when(chatPresetDefaults.effectivePresetIdForApi(any()))
                 .thenAnswer(
@@ -194,7 +203,10 @@ class ConversationApplicationServiceTest {
 
         RagPresetEntity demoWorst = mock(RagPresetEntity.class);
         when(demoWorst.getId()).thenReturn(ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID);
-        when(chatPresetDefaults.loadDeterministicDefaultPreset()).thenReturn(Optional.of(demoWorst));
+        when(indexAwareChatPresetDefaultService.resolveDefaultPresetId(userId, projectId))
+                .thenReturn(Optional.of(ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID));
+        when(presetService.requireVisiblePreset(userId, ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID))
+                .thenReturn(demoWorst);
 
         when(conversationRepository.save(any(ConversationEntity.class)))
                 .thenAnswer(
@@ -558,15 +570,15 @@ class ConversationApplicationServiceTest {
                             return e;
                         });
 
-        Map<String, Object> overrides = Map.of("reasoningEnabled", true);
+        Map<String, Object> overrides = Map.of("topK", 12, "similarityThreshold", 0.55);
         ConversationDto dto =
                 service.createConversation(
                         userId, projectId, new CreateConversationRequest(null, null, null, overrides));
 
         ArgumentCaptor<ConversationEntity> cap = ArgumentCaptor.forClass(ConversationEntity.class);
         verify(conversationRepository).save(cap.capture());
-        assertThat(cap.getValue().getRuntimeOverride()).containsEntry("reasoningEnabled", true);
-        assertThat(dto.runtimeOverride()).containsEntry("reasoningEnabled", true);
+        assertThat(cap.getValue().getRuntimeOverride()).containsEntry("topK", 12);
+        assertThat(dto.runtimeOverride()).containsEntry("topK", 12);
     }
 
     @Test

@@ -6,7 +6,9 @@ import com.uniovi.rag.application.service.runtime.memory.ConversationMemoryStrat
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolExecutor;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
+import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
+import com.uniovi.rag.domain.runtime.RagSnapshotContextHolder;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
@@ -93,12 +95,14 @@ public class RuntimeTraceReplayStrategy {
 
         ExecutionContext ctxAfterQu = buildContextAndRunQu(trace, inputs, pin);
         RagExecutionContextHolder.set(toRagExecutionContextHolder(ctxAfterQu));
+        RagSnapshotContextHolder.set(ctxAfterQu.knowledgeSnapshotSelection().orderedSnapshotIds());
         try {
             RagExecutionResult partial = workflow.execute(ctxAfterQu);
             return RuntimeTraceReplayResult.success(
                     partial.answerText(), partial.executionTrace() != null ? partial.executionTrace() : ExecutionTrace.placeholder());
         } finally {
             RagExecutionContextHolder.clear();
+            RagSnapshotContextHolder.clear();
         }
     }
 
@@ -299,13 +303,7 @@ public class RuntimeTraceReplayStrategy {
     }
 
     private static RagExecutionContext toRagExecutionContextHolder(ExecutionContext ctx) {
-        return new RagExecutionContext(
-                ctx.conversationId() != null ? ctx.conversationId().toString() : null,
-                ctx.userId() != null ? ctx.userId().toString() : null,
-                ctx.projectId() != null ? ctx.projectId().toString() : null,
-                ctx.resolved().toRagConfig(),
-                ctx.documentFilter(),
-                ctx.correlationId());
+        return RagExecutionContext.fromEngineContext(ctx);
     }
 
     private static boolean requiresKnowledgeSnapshots(String workflowName) {

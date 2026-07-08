@@ -25,7 +25,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * Phase 1 — uniform provider resolution: {@code rag.llm.default-provider} governs chat and embeddings unless explicitly split.
+ * Phase 1 - uniform provider resolution: {@code rag.llm.default-provider} governs chat and embeddings unless explicitly split.
  */
 @ExtendWith(MockitoExtension.class)
 class LlmProviderResolutionTest {

@@ -17,7 +17,7 @@ import {
 
 const EVIDENCE_DIR = path.resolve(
   process.env.PHASE8_UI_EVIDENCE_DIR ??
-    path.join(process.cwd(), "../.cursor/evidence/final-engineering-hardening-20260626/08_ui_evaluation_validation"),
+    path.join(process.cwd(), "../../../docs/evidence/final-engineering-hardening-20260626/08_ui_evaluation_validation"),
 );
 
 async function installDockerWebappApiProxy(page: Page): Promise<void> {
@@ -105,7 +105,7 @@ async function runBenchmarkFlow(
 
   const needsDataset = await page.getByTestId("lab-benchmark-needs-dataset-warn").isVisible().catch(() => false);
   if (needsDataset) {
-    issues.push("No compatible dataset — lab-benchmark-needs-dataset-warn visible");
+    issues.push("No compatible dataset - lab-benchmark-needs-dataset-warn visible");
     await screenshot(page, `${segment}-needs-dataset.png`);
     return {
       flow: segment.toUpperCase(),
@@ -320,7 +320,7 @@ test.describe.serial("UI evaluation validation @closure @fullstack @ui-evaluatio
     const steps = ["Open LLM evaluation page"];
 
     if (await warn.isVisible().catch(() => false)) {
-      steps.push("needs-dataset warning visible — run correctly blocked");
+      steps.push("needs-dataset warning visible - run correctly blocked");
       await expect(runButton).toBeDisabled();
       await screenshot(page, "error-needs-dataset.png");
       writeEvidence("error_handling_evidence.json", {
@@ -333,7 +333,7 @@ test.describe.serial("UI evaluation validation @closure @fullstack @ui-evaluatio
     }
 
     await page.getByTestId("lab-benchmark-dataset-select").selectOption({ index: 0 });
-    steps.push("Dataset present — clear selection to probe validation");
+    steps.push("Dataset present - clear selection to probe validation");
     await page.getByTestId("lab-benchmark-dataset-select").selectOption("");
     const disabled = await runButton.isDisabled();
     steps.push(`Run button disabled after clear: ${disabled}`);

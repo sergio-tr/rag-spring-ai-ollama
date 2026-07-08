@@ -2,7 +2,7 @@
 """
 Infra micro-probe: simple GET (default /actuator/health) latency percentiles.
 
-Not a RAG benchmark — use for cold/warm JVM or reverse-proxy baselines.
+Not a RAG benchmark - use for cold/warm JVM or reverse-proxy baselines.
 """
 
 from __future__ import annotations

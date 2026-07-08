@@ -11,11 +11,11 @@
 | Spring AI + Ollama | Present | `spring-ai-ollama-spring-boot-starter`, `ChatClient`, `ChatModel`, `EmbeddingModel`; BOM `spring-ai.version` in `rag-service/pom.xml` |
 | Vector store | Present | `PgVectorStore` via Spring AI; snapshot-bound search in dense retrieval strategies |
 | Orchestrated runtime | Present | `RagExecutionOrchestrator`, route families, `ExecutionTrace` persistence (P15) |
-| Advanced retrieval | Present | `AdvancedRetrievalPipeline` — sole dense-workflow retrieval entry |
+| Advanced retrieval | Present | `AdvancedRetrievalPipeline` - sole dense-workflow retrieval entry |
 | Advisors | Present | Spring AI `QuestionAnswerAdvisor` bean + custom `AdvisorPolicyResolver` / `AdvisorStrategy` (P10 packing path) |
 | Deterministic tools | Present | `QueryType` tools + `MeetingMinutesToolsAdapter` (`@Tool`); FC whitelist `DeterministicToolKind` + `DefaultFunctionCallingToolRegistry` |
 | Pre-orchestrator synthesis pipeline | Removed | Former `AnswerGenerationKernel` / `ResponseSynthesisPipeline` packages deleted; product and Lab use `RagExecutionOrchestrator` + workflows only |
-| Knowledge ingest | Present | `KnowledgePipelineOrchestrator` — documented sole write path in class Javadoc |
+| Knowledge ingest | Present | `KnowledgePipelineOrchestrator` - documented sole write path in class Javadoc |
 | Observability | Partial | `ObservabilitySupport` + traced decorators; Micrometer timers for workflow LLM calls (`rag.ai.llm.invoke`), ETL counters (`rag.knowledge.etl.events`) |
 
 ## Measurement baseline (normative)
@@ -31,7 +31,7 @@ Track **before vs after** each increment using the same definitions:
 ## Compatibility freezes
 
 - **HTTP surface P59–P61:** runtime trace regression suite controllers and contracts documented in [`rag-service/README.md`](../../rag-service/README.md); full module test gate remains `mvn test` from `rag-service/`.
-- **Orchestrated runtime order:** P11 clarification → P12 memory → `QueryUnderstandingPipeline` → P11 policy → P13 routing → execution family → P14 judge → P15 persistence — see [`rag-runtime-architecture.md`](../architecture/rag-runtime-architecture.md).
+- **Orchestrated runtime order:** P11 clarification → P12 memory → `QueryUnderstandingPipeline` → P11 policy → P13 routing → execution family → P14 judge → P15 persistence - see [`rag-runtime-architecture.md`](../architecture/rag-runtime-architecture.md).
 
 ## Documentation allowlist / denylist
 

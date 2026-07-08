@@ -1,15 +1,16 @@
 """
-Inference engine: runs prediction for a query using a loaded model.
+Inference engine: runs prediction for a query using a loaded Keras or sklearn model.
 No HTTP; depends on ModelLoader and Config for default model id.
 """
 import numpy as np
-import tensorflow as tf
 
 from app.base import Loggable
 from app.config import Config
 from app.inference.model_loader import ModelLoader
+from app.inference.sklearn_predict import predict_proba
 from app.models.classification_result import ClassificationResult, TopPrediction
 from app.query_type_contract import label_set_hash
+from app.tensorflow_support import require_tensorflow
 
 
 class InferenceEngine(Loggable):
@@ -27,14 +28,24 @@ class InferenceEngine(Loggable):
 
     def predict_detailed(self, query: str, model_id: str | None = None) -> ClassificationResult:
         """
-        Predicts query type with softmax confidence and optional top-k predictions.
+        Predicts query type with confidence and optional top-k predictions.
         """
         mid = model_id or self._config.get_default_model_id()
-        if not self._loader.is_loaded(mid):
-            self._loader.load_by_id(mid)
-        model = self._loader.get_model(mid)
-        class_names = self._loader.get_class_names(mid)
-        probs = model.predict(tf.constant([query]), verbose=0)[0]
+        loaded = self._loader.get_loaded_model(mid)
+        class_names = loaded.class_names
+        if loaded.model_type == "sklearn":
+            probs = predict_proba(loaded.artifact, query)
+            clf_classes = list(loaded.artifact.named_steps["clf"].classes_)
+            canon_idx = {name: i for i, name in enumerate(class_names)}
+            aligned = np.zeros(len(class_names), dtype=float)
+            for i, label in enumerate(clf_classes):
+                idx = canon_idx.get(str(label))
+                if idx is not None:
+                    aligned[idx] = float(probs[i])
+            probs = aligned
+        else:
+            tf = require_tensorflow()
+            probs = loaded.artifact.predict(tf.constant([query]), verbose=0)[0]
         idx = int(np.argmax(probs))
         confidence = float(probs[idx])
         top_predictions = self._top_predictions(probs, class_names)

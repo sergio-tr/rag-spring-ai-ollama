@@ -21,7 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Promotes a CHAT_LOCAL document to PROJECT_SHARED (new row + re-ingest; overlay remains — DC-09).
+ * Promotes a CHAT_LOCAL document to PROJECT_SHARED (new row + re-ingest; overlay remains - DC-09).
  */
 @Service
 public class PromoteDocumentApplicationService {

@@ -232,6 +232,24 @@ class ResolvedLlmConfigResolverTest {
         config.requireApiKeyEnvResolvable();
     }
 
+    @Test
+    void resolve_userLayerTemperatureAndAdditionalParameters_availableForExperimentalSnapshot() {
+        when(configurationSource.loadUserDefault(eq(userId)))
+                .thenReturn(
+                        Optional.of(
+                                Map.of(
+                                        LlmConfigurationKeys.TEMPERATURE,
+                                        0.42,
+                                        LlmConfigurationKeys.ADDITIONAL_PARAMETERS,
+                                        Map.of("seed", 7, "topP", 0.88))));
+
+        ResolvedLlmConfig config = resolver.resolve(userId, null, null);
+
+        assertEquals(0.42, config.temperature());
+        assertEquals(7, config.additionalParameters().get("seed"));
+        assertEquals(0.88, config.additionalParameters().get("topP"));
+    }
+
     private void configureOpenAiCatalog(String chatModel) {
         LlmOpenAiCompatibleDefaults openAi = llmProperties.getOpenAiCompatible();
         openAi.setDefaultBaseUrl("http://litellm:4000");

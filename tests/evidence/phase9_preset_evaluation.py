@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 9 — preset evaluation evidence collector (API-backed)."""
+"""Phase 9 - preset evaluation evidence collector (API-backed)."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_EVIDENCE = REPO_ROOT / ".cursor/evidence/final-engineering-hardening-autonomous-20260627/09_preset_evaluation"
+DEFAULT_EVIDENCE = REPO_ROOT / "docs/evidence/final-engineering-hardening-autonomous-20260627/09_preset_evaluation"
 REFERENCE_DATASET_ID = "00000000-0000-7000-8000-000000000001"
 QUESTIONS_CSV = REPO_ROOT / "rag-service/src/main/resources/evaluation/functional-defense-subset/functional_subset_questions.csv"
 

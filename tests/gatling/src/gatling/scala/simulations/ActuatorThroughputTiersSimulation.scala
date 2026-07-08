@@ -6,7 +6,7 @@ import io.gatling.http.Predef._
 import scala.concurrent.duration.DurationInt
 
 /**
- * Multi-phase constant throughput on actuator health — compares several RPS plateaus in one run.
+ * Multi-phase constant throughput on actuator health - compares several RPS plateaus in one run.
  * Tune with {@code GATLING_TIER1_RPS} … {@code GATLING_TIER3_RPS} and matching {@code *_SEC} durations.
  */
 class ActuatorThroughputTiersSimulation extends Simulation {

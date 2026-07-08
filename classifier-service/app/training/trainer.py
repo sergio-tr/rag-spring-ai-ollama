@@ -7,7 +7,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 
@@ -16,6 +15,7 @@ from app.config import Config
 from app.dataset_columns import normalize_excel_classification_columns
 from app.query_type_contract import JAVA_QUERY_TYPES, LEGACY_TRAINING_LABEL_MAP, validate_query_type_label
 from app.registry.model_registry import ModelRegistry
+from app.tensorflow_support import require_tensorflow
 
 MODEL_FILENAME = "model.keras"
 LABELS_FILENAME = "labels.txt"
@@ -41,6 +41,7 @@ class TrainingPipeline(Loggable):
         sequence_length: int = 40,
         early_stopping_patience: int = 5,
         owner_id: str | None = None,
+        class_weight: bool = False,
     ) -> dict:
         """
         Trains a classifier from an Excel file with columns Question and QueryType
@@ -49,6 +50,7 @@ class TrainingPipeline(Loggable):
         Saves model, labels and metadata under output_dir or MODELS_DIR/{new_id}/.
         Returns dict with model_id, name, paths, metrics.
         """
+        tf = require_tensorflow()
         df = normalize_excel_classification_columns(pd.read_excel(dataset_path))
         if "Question" not in df.columns or "QueryType" not in df.columns:
             raise ValueError("Dataset must have columns 'Question' and 'QueryType'")
@@ -113,6 +115,18 @@ class TrainingPipeline(Loggable):
             restore_best_weights=True,
         )
 
+        fit_kwargs: dict = {}
+        if class_weight:
+            from sklearn.utils.class_weight import compute_class_weight
+
+            y_train_idx = np.argmax(y_train, axis=1)
+            weights = compute_class_weight(
+                class_weight="balanced",
+                classes=np.arange(len(class_names)),
+                y=y_train_idx,
+            )
+            fit_kwargs["class_weight"] = {i: float(w) for i, w in enumerate(weights)}
+
         model.fit(
             x_train, y_train,
             epochs=epochs,
@@ -120,6 +134,7 @@ class TrainingPipeline(Loggable):
             validation_data=(x_val, y_val),
             callbacks=[early_stop],
             verbose=0,
+            **fit_kwargs,
         )
 
         model_id = self._registry.create_new_model_id()

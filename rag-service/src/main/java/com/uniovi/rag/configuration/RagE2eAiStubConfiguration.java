@@ -2,13 +2,17 @@ package com.uniovi.rag.configuration;
 
 import com.uniovi.rag.application.port.ClassifierLabPort;
 import com.uniovi.rag.application.port.ClassifierTrainBytesCommand;
+import com.uniovi.rag.application.port.OllamaModelAvailabilityPort;
 import com.uniovi.rag.application.port.llm.LlmEmbeddingResponse;
 import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.application.service.llm.LlmClientResolver;
 import com.uniovi.rag.application.service.llm.ProviderAwareEmbeddingService;
+import com.uniovi.rag.application.service.llm.catalog.EmbeddingModelCatalogResolver;
 import com.uniovi.rag.application.service.runtime.llm.OrchestrationLlmConfigScope;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
+import com.uniovi.rag.infrastructure.health.RagHealthProperties;
+import com.uniovi.rag.infrastructure.llm.ollama.OllamaApiClient;
 import com.uniovi.rag.infrastructure.vector.OllamaEmbeddingModelFactory;
 import com.uniovi.rag.infrastructure.vector.ProviderAwareEmbeddingModelFactory;
 import io.micrometer.observation.ObservationRegistry;
@@ -66,6 +70,19 @@ public class RagE2eAiStubConfiguration {
 
     @Bean
     @Primary
+    public OllamaApiClient e2eOllamaApiClient(RagHealthProperties healthProperties) {
+        return OllamaApiClient.noHttpStub(healthProperties);
+    }
+
+    /** Avoid per-model Ollama HTTP probes when building the selectable CHAT catalog in CI. */
+    @Bean
+    @Primary
+    public OllamaModelAvailabilityPort e2eOllamaModelAvailabilityPort() {
+        return modelName -> modelName != null && !modelName.isBlank();
+    }
+
+    @Bean
+    @Primary
     public EmbeddingModel e2eEmbeddingModel() {
         return new E2eStubEmbeddingModel();
     }
@@ -89,8 +106,11 @@ public class RagE2eAiStubConfiguration {
     @Bean
     @Primary
     public ProviderAwareEmbeddingService e2eProviderAwareEmbeddingService(
-            LlmClientResolver llmClientResolver, ResolvedLlmConfigResolver resolvedLlmConfigResolver) {
-        return new ProviderAwareEmbeddingService(llmClientResolver, resolvedLlmConfigResolver) {
+            LlmClientResolver llmClientResolver,
+            ResolvedLlmConfigResolver resolvedLlmConfigResolver,
+            EmbeddingModelCatalogResolver embeddingModelCatalogResolver) {
+        return new ProviderAwareEmbeddingService(
+                llmClientResolver, resolvedLlmConfigResolver, embeddingModelCatalogResolver) {
             @Override
             public ResolvedLlmConfig resolveEffectiveConfig() {
                 return OrchestrationLlmConfigScope.current().orElse(E2E_LLM_CONFIG);

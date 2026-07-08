@@ -146,7 +146,7 @@ public final class DeterministicToolEvidenceEvaluator {
                     .map(DeterministicToolApplicability::isApplicableQueryType)
                     .orElse(true);
             case LOW_CONFIDENCE, INVALID_OUTPUT -> true;
-            case UNAVAILABLE, TIMEOUT, INVALID_REQUEST -> true;
+            case UNAVAILABLE, TIMEOUT, INVALID_REQUEST, DISABLED -> true;
             default -> false;
         };
     }
@@ -415,13 +415,25 @@ public final class DeterministicToolEvidenceEvaluator {
     }
 
     private static boolean hasFilterAndListText(String query) {
+        if ((query.contains("fechas") || query.contains("dates"))
+                && query.contains("actas")
+                && (query.contains("terminaron")
+                        || query.contains("termino")
+                        || query.contains("finaliz"))
+                && (query.contains("tarde")
+                        || query.contains("mas tarde")
+                        || query.contains("más tarde")
+                        || query.contains("later"))) {
+            return true;
+        }
         boolean listSubject =
                 query.contains("qué actas")
                         || query.contains("que actas")
                         || query.contains("qué reuniones")
                         || query.contains("que reuniones")
                         || query.contains("dime qué actas")
-                        || query.contains("dime que actas");
+                        || query.contains("dime que actas")
+                        || query.contains("dime las actas");
         if (!listSubject) {
             return false;
         }
@@ -435,13 +447,15 @@ public final class DeterministicToolEvidenceEvaluator {
                 || query.contains("al menos")) {
             return true;
         }
-        return query.contains("mencionan")
+        return (query.contains("mencionan") || query.contains("comentan"))
                 && (query.contains("cámara")
                         || query.contains("camara")
                         || query.contains("videovigilancia")
                         || query.contains("ascensor")
+                        || query.contains("elevator")
                         || query.contains("convivencia")
-                        || query.contains("seguridad"));
+                        || query.contains("seguridad")
+                        || query.contains("problemas"));
     }
 
     private static boolean hasBooleanText(String query) {

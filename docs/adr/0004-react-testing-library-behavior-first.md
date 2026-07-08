@@ -1,4 +1,4 @@
-# ADR 0004: React component tests — behavior-first with Testing Library
+# ADR 0004: React component tests - behavior-first with Testing Library
 
 ## Status
 

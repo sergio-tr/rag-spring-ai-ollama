@@ -5,6 +5,7 @@ import com.uniovi.rag.application.service.runtime.document.extraction.DocumentCo
 import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
+import com.uniovi.rag.util.NerDateFieldSupport;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -238,9 +239,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                 if (ner.has(NER_KEY_FILTERS) && !ner.isNull(NER_KEY_FILTERS)) {
                     JSONObject filters = ner.getJSONObject(NER_KEY_FILTERS);
                     if (filters.has("date") && !filters.isNull("date")) {
-                        JSONArray dates = filters.getJSONArray("date");
-                        for (int i = 0; i < dates.length(); i++) {
-                            String dateStr = dates.getString(i);
+                        for (String dateStr : NerDateFieldSupport.readDateStrings(filters, "date")) {
                             // Extract year from date string
                             Pattern yearPattern = Pattern.compile("\\b(20\\d{2})\\b");
                             Matcher matcher = yearPattern.matcher(dateStr);
@@ -334,7 +333,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
 
     /**
      * Filters documents to those whose date matches any of the given date candidates (OR).
-     * Used when the query compares two specific dates (e.g. which meeting was longer on date A vs date B) — item 53.
+     * Used when the query compares two specific dates (e.g. which meeting was longer on date A vs date B) - item 53.
      */
     private List<Document> filterDocumentsByAnyOfDates(List<Document> docs, List<String> dateCandidates) {
         if (docs == null || docs.isEmpty() || dateCandidates == null || dateCandidates.isEmpty()) {
@@ -380,7 +379,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                 && (q.contains(" o ") || q.contains(" or "));
     }
 
-    /** Spanish/English month tokens or "month" / "mes" — used by rule-based comparison detection. */
+    /** Spanish/English month tokens or "month" / "mes" - used by rule-based comparison detection. */
     private static boolean monthComparisonCueInQuery(String queryLower) {
         return queryLower.contains("febrero") || queryLower.contains("february")
                 || queryLower.contains("abril") || queryLower.contains("april")
@@ -399,7 +398,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         
         String queryLower = query.toLowerCase();
         
-        // More attendees in month A or B (e.g. "más asistentes en agosto o en febrero") — compare by month
+        // More attendees in month A or B (e.g. "más asistentes en agosto o en febrero") - compare by month
         if ((queryLower.contains("asistentes") || queryLower.contains("attendees") || queryLower.contains("asistencia"))
                 && monthComparisonCueInQuery(queryLower)) {
             log().info("Detected attendees comparison by month");
@@ -439,13 +438,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             """, query);
         
         try {
-            String response = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip()
-                    .toLowerCase();
+            String response = getLLMResponseCached("metadata-field-normalization", prompt).toLowerCase();
             return mapLlmResponseToComparisonField(response);
         } catch (Exception e) {
             log().warn("Error inferring comparison field with LLM: {}", e.getMessage());

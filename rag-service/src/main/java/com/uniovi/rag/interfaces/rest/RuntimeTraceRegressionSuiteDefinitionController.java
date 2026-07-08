@@ -64,17 +64,17 @@ import java.util.UUID;
  * P34: read-only GET routes; P35: POST/PUT/DELETE for definitions; P36: POST execute routes materialize via
  * {@link RuntimeTraceRegressionSuiteDefinitionService#materializeToSuiteRequest} then {@link RuntimeTraceRegressionSuiteService#execute} only.
  *
- * <p>P47: two {@code POST} routes persist a suite run after materialize + {@code execute} with {@link RuntimeTraceRegressionSuiteRunSourceType#SAVED_DEFINITION} —
+ * <p>P47: two {@code POST} routes persist a suite run after materialize + {@code execute} with {@link RuntimeTraceRegressionSuiteRunSourceType#SAVED_DEFINITION} -
  * orchestration only in this controller (no bridge {@code @Service}).
  *
- * <p>P50: two {@code GET} routes list/detail persisted runs for a saved definition — {@link RuntimeTraceRegressionSuiteDefinitionService#loadByIdForUser}
+ * <p>P50: two {@code GET} routes list/detail persisted runs for a saved definition - {@link RuntimeTraceRegressionSuiteDefinitionService#loadByIdForUser}
  * gate only, then {@link RuntimeTraceRegressionSuiteRunPersistenceService} definition-scoped reads (no {@code execute}, no {@code createRun}).
  *
- * <p>P52: one {@code DELETE} route removes a persisted run in definition context — same gate, then
+ * <p>P52: one {@code DELETE} route removes a persisted run in definition context - same gate, then
  * {@link RuntimeTraceRegressionSuiteRunPersistenceService#deleteRunForUserAndDefinition} only (no global
  * {@link RuntimeTraceRegressionSuiteRunPersistenceService#deleteRunForUser(UUID, UUID)}).
  *
- * <p>P53–P55: definition-scoped run ZIP export / import / preview — gated routes delegate to the corresponding services exposed via
+ * <p>P53–P55: definition-scoped run ZIP export / import / preview - gated routes delegate to the corresponding services exposed via
  * {@link DefinitionRunZipServiceBundle}.
  */
 @RestController

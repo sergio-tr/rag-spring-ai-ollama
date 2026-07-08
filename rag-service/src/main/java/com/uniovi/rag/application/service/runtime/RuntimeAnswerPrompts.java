@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.runtime;
 
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
+import com.uniovi.rag.application.service.runtime.language.QueryLanguagePolicy;
 import com.uniovi.rag.domain.runtime.policy.AnswerGroundingPolicy;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import java.util.ArrayList;
@@ -18,7 +19,7 @@ import java.util.regex.Pattern;
 public final class RuntimeAnswerPrompts {
 
     public static final String INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_ES =
-            "No consta en las fuentes disponibles información suficiente para responder con seguridad.";
+            "No tengo contexto suficiente en las actas proporcionadas para responder con seguridad.";
 
     public static final String INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_EN =
             "I could not find enough information in the project documents to answer confidently.";
@@ -33,7 +34,7 @@ public final class RuntimeAnswerPrompts {
             """
             You are a helpful assistant. Retrieved fragments from a meeting-minutes database are provided below when available.
 
-            PRIORITY — answer the user's question:
+            PRIORITY - answer the user's question:
             - If the question is general (jokes, definitions, chat, etc.) you may answer directly using general knowledge in the user's language.
             - If the question is about the documents, base factual claims on the context only; never invent acta-specific facts not in the context.
 
@@ -141,14 +142,15 @@ public final class RuntimeAnswerPrompts {
             4. Do not mix actas from different dates as if they were one document.
             5. For roles such as president, vice-president, or secretary, answer only when the role and person are explicit in the CONTEXT; otherwise say the role is not stated in the sources (do not invent names).
             6. If evidence is partial, answer only the supported part and name the limitation.
-            7. Answer in the SAME LANGUAGE as the user's question.
-            8. Be concise.
-            9. For counts: state the number and name supporting actas when available.
-            10. For lists: enumerate all matching items clearly.
-            11. For summaries: include agenda/topics discussed, not only schedule and attendance.
-            12. When information is unavailable, explain briefly why.
-            13. Include source references (acta filename or date) when stating facts.
-            14. Never include internal routing labels or debug tokens.
+            7. Corpus documents may include meeting dates that appear future relative to general world knowledge; treat them as valid project records when present in the CONTEXT.
+            8. Answer in the SAME LANGUAGE as the user's question.
+            9. Be concise.
+            10. For counts: state the number and name supporting actas when available.
+            11. For lists: enumerate all matching items clearly.
+            12. For summaries: include agenda/topics discussed, not only schedule and attendance.
+            13. When information is unavailable, explain briefly why.
+            14. Include source references (acta filename or date) when stating facts.
+            15. Never include internal routing labels or debug tokens.
 
             %s
             <Question> %s </Question>
@@ -207,6 +209,46 @@ public final class RuntimeAnswerPrompts {
             """;
 
     private RuntimeAnswerPrompts() {
+    }
+
+    /** Stable material for prompt bundle fingerprinting (template skeletons only). */
+    public static String fingerprintMaterial() {
+        return String.join(
+                "\n---\n",
+                INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_ES,
+                INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_EN,
+                DOCUMENT_BOUND_REQUIRES_RETRIEVAL_MESSAGE_ES,
+                DOCUMENT_BOUND_REQUIRES_RETRIEVAL_MESSAGE_EN,
+                GENERAL_TEMPLATE,
+                DEFAULT_RETRIEVAL_TEMPLATE,
+                NEGATIVE_EVIDENCE_TEMPLATE,
+                NUMERIC_OR_DATE_TEMPLATE,
+                ENTITY_OR_TOPIC_TEMPLATE,
+                ATTEMPT_DOCUMENT_TEMPLATE,
+                STRICT_DOCUMENT_TEMPLATE,
+                NEGATIVE_DOCUMENT_TEMPLATE,
+                DIRECT_BASELINE_USER_TEMPLATE);
+    }
+
+    public static String defaultAnswerSynthesisTemplate() {
+        return DEFAULT_RETRIEVAL_TEMPLATE;
+    }
+
+    public static String defaultAbstentionMessageEn() {
+        return INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_EN;
+    }
+
+    public static String defaultSourceGroundingBlock() {
+        return """
+            Grounding policy:
+            - Base factual claims ONLY on the CONTEXT below.
+            - Cite acta filename or date when stating facts.
+            - If the question asks "en qué acta", the primary output must be the acta identifier, document name and/or meeting date.
+            - Do not replace acta lookup with generic legal or thematic explanations.
+            - If the CONTEXT does not support the answer, abstain clearly; if evidence is partial, answer what is known.
+            - Do not reject corpus documents solely because a meeting date appears future relative to general knowledge; use the CONTEXT as authoritative for this project.
+            - Never output judge/classifier format such as "Answer: NO".
+            """;
     }
 
     public static String ragUserTurn(String rawQuestion, String contextBlock) {
@@ -292,13 +334,45 @@ public final class RuntimeAnswerPrompts {
             boolean documentScopedQuestion,
             Optional<String> dateMismatchNotice,
             String answerPlanBlock) {
+        return ragUserTurn(
+                rawQuestion,
+                contextBlock,
+                policy,
+                documentScopedQuestion,
+                dateMismatchNotice,
+                answerPlanBlock,
+                null,
+                null);
+    }
+
+    /**
+     * @param answerSynthesisTemplate resolved {@link com.uniovi.rag.domain.config.prompt.ConfigurablePromptGroup#ANSWER_SYNTHESIS} template; when null uses policy defaults
+     * @param sourceGroundingBlock resolved {@link com.uniovi.rag.domain.config.prompt.ConfigurablePromptGroup#SOURCE_GROUNDING} block prepended to the plan section
+     */
+    public static String ragUserTurn(
+            String rawQuestion,
+            String contextBlock,
+            AnswerGroundingPolicy policy,
+            boolean documentScopedQuestion,
+            Optional<String> dateMismatchNotice,
+            String answerPlanBlock,
+            String answerSynthesisTemplate,
+            String sourceGroundingBlock) {
         String q = rawQuestion != null ? rawQuestion : "";
         String c0 = contextBlock != null ? contextBlock : "";
-        String plan = answerPlanBlock != null && !answerPlanBlock.isBlank() ? answerPlanBlock.trim() : "";
-        String planSection = plan.isBlank() ? "" : plan + "\n";
+        String planSection =
+                planSectionWithGrounding(
+                        answerPlanBlock,
+                        sourceGroundingBlock,
+                        QueryLanguagePolicy.answerInQueryLanguageInstruction(
+                                QueryLanguagePolicy.detect(q)));
 
         if (!documentScopedQuestion) {
-            return String.format(GENERAL_TEMPLATE, planSection, q, c0);
+            String template =
+                    answerSynthesisTemplate != null && !answerSynthesisTemplate.isBlank()
+                            ? answerSynthesisTemplate
+                            : GENERAL_TEMPLATE;
+            return String.format(template, planSection, q, c0);
         }
 
         String notice =
@@ -306,6 +380,9 @@ public final class RuntimeAnswerPrompts {
         String contextCombined = notice + c0;
 
         AnswerGroundingPolicy p = policy != null ? policy : AnswerGroundingPolicy.DEFAULT_RETRIEVAL_GROUNDED;
+        if (answerSynthesisTemplate != null && !answerSynthesisTemplate.isBlank()) {
+            return String.format(answerSynthesisTemplate, planSection, q, contextCombined);
+        }
         return switch (p) {
             case DIRECT_UNGROUNDED_BASELINE -> String.format(DIRECT_BASELINE_USER_TEMPLATE, planSection, q);
             case CORPUS_GROUNDED_BASELINE ->
@@ -318,6 +395,30 @@ public final class RuntimeAnswerPrompts {
             case DEFAULT_RETRIEVAL_GROUNDED -> String.format(DEFAULT_RETRIEVAL_TEMPLATE, planSection, q, contextCombined);
             case ATTEMPT_WITH_CONTEXT -> String.format(ATTEMPT_DOCUMENT_TEMPLATE, planSection, q, contextCombined);
         };
+    }
+
+    private static String planSectionWithGrounding(
+            String answerPlanBlock, String sourceGroundingBlock, String languageInstruction) {
+        String plan = answerPlanBlock != null && !answerPlanBlock.isBlank() ? answerPlanBlock.trim() : "";
+        String grounding =
+                sourceGroundingBlock != null && !sourceGroundingBlock.isBlank()
+                        ? sourceGroundingBlock.trim()
+                        : "";
+        String language =
+                languageInstruction != null && !languageInstruction.isBlank()
+                        ? languageInstruction.trim()
+                        : "";
+        StringBuilder section = new StringBuilder();
+        if (!grounding.isBlank()) {
+            section.append(grounding).append('\n');
+        }
+        if (!language.isBlank()) {
+            section.append(language).append('\n');
+        }
+        if (!plan.isBlank()) {
+            section.append(plan).append('\n');
+        }
+        return section.toString();
     }
 
     /**
@@ -362,7 +463,7 @@ public final class RuntimeAnswerPrompts {
     }
 
     public static String insufficientDocumentContextMessageFor(String rawQuestion) {
-        if (looksSpanish(rawQuestion)) {
+        if (QueryLanguagePolicy.looksSpanish(rawQuestion)) {
             return INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_ES;
         }
         return INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_EN;
@@ -449,27 +550,14 @@ public final class RuntimeAnswerPrompts {
     }
 
     public static String documentBoundRequiresRetrievalMessageFor(String rawQuestion) {
-        if (looksSpanish(rawQuestion)) {
+        if (QueryLanguagePolicy.looksSpanish(rawQuestion)) {
             return DOCUMENT_BOUND_REQUIRES_RETRIEVAL_MESSAGE_ES;
         }
         return DOCUMENT_BOUND_REQUIRES_RETRIEVAL_MESSAGE_EN;
     }
 
     private static boolean looksSpanish(String rawQuestion) {
-        if (rawQuestion == null) {
-            return true;
-        }
-        String q = rawQuestion.toLowerCase();
-        return q.contains("¿")
-                || q.contains("¡")
-                || q.contains("acta")
-                || q.contains("reunión")
-                || q.contains("reunion")
-                || q.contains("documento")
-                || q.contains("asistente")
-                || q.contains("presidente")
-                || q.contains("duración")
-                || q.contains("duracion");
+        return QueryLanguagePolicy.looksSpanish(rawQuestion);
     }
 
     private static List<CandidateDateEvidence> extractCandidateDateEvidence(List<RetrievalCandidate> candidates) {

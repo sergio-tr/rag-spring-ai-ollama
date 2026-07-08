@@ -1,5 +1,6 @@
 package com.uniovi.rag.infrastructure.config;
 
+import com.uniovi.rag.application.service.config.llm.TaskLlmConfigurationCompat;
 import com.uniovi.rag.application.port.ConfigurationSourcePort;
 import com.uniovi.rag.application.port.PresetProfileCompositionSources;
 import com.uniovi.rag.domain.RagConfigurationLevel;
@@ -79,7 +80,7 @@ public class JpaConfigurationSourceAdapter implements ConfigurationSourcePort {
         terminalJson.ifPresent(merged::putAll);
         prefs.ifPresent(merged::putAll);
         pers.ifPresent(merged::putAll);
-        return Optional.of(merged);
+        return Optional.of(TaskLlmConfigurationCompat.applyLlmModelToFinalAnswerShim(merged));
     }
 
     @Override

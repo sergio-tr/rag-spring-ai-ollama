@@ -2,6 +2,12 @@ package com.uniovi.rag.application.service.runtime.query.analyser;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.application.config.ConfigurablePromptResolver;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
+import com.uniovi.rag.application.service.runtime.optimization.OptionalLlmCallBudgetSkippedException;
+import com.uniovi.rag.domain.config.prompt.ConfigurablePromptGroup;
+import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
+import com.uniovi.rag.util.NerDateFieldSupport;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -12,7 +18,6 @@ import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.annotation.Lazy;
@@ -55,6 +60,12 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
 
     /** Spring proxy for {@code @Cacheable} (avoid self-invocation). */
     private MinuteNERQueryAnalyser cacheableSelf;
+
+    @Nullable
+    private final ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
+
+    @Nullable
+    private final ConfigurablePromptResolver promptResolver;
 
     private static final String JSON_VALUE_UNKNOWN = "unknown";
 
@@ -164,10 +175,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
      */
     private static final ObjectMapper JACKSON_MAPPER = new ObjectMapper();
 
-    @Nullable
-    private final ChatClient chatClient;
-    
-    // Date patterns for normalization - enhanced to match parseDateFlexible and parseDateToLocalDate
+    // Date patterns for normalization
     // These formatters are used to normalize dates extracted from NER
     private static final List<DateTimeFormatter> DATE_FORMATTERS = Arrays.asList(
         // ISO format first (most reliable)
@@ -205,8 +213,20 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
     private static final Pattern TIME_PATTERN = Pattern.compile("\\b(\\d{1,2}):(\\d{2})\\b");
     private static final Pattern NUMBER_PATTERN = Pattern.compile("\\b\\d+\\b");
 
-    public MinuteNERQueryAnalyser(@Nullable ChatClient chatClient) {
-        this.chatClient = chatClient;
+    public MinuteNERQueryAnalyser(@Nullable ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor) {
+        this(secondaryLlmExecutor, null);
+    }
+
+    public MinuteNERQueryAnalyser(
+            @Nullable ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor,
+            @Nullable ConfigurablePromptResolver promptResolver) {
+        this.secondaryLlmExecutor = secondaryLlmExecutor;
+        this.promptResolver = promptResolver;
+    }
+
+    /** Default NER extraction prompt template (catalog + {@link com.uniovi.rag.domain.config.prompt.ConfigurablePromptGroup#NER_EXTRACTION}). */
+    public static String defaultPromptTemplate() {
+        return NER_PROMPT;
     }
 
     @Autowired
@@ -224,9 +244,12 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
             log().warn("NER: Empty query provided");
             return createFallbackResponse(query);
         }
-        
+
         try {
-            return cacheable().analyseWithCache(query);
+            return cacheable().analyseWithCache(query, NER_PROMPT, null);
+        } catch (OptionalLlmCallBudgetSkippedException e) {
+            log().info("NER: skipped LLM extraction for query (budget): {}", e.getMessage());
+            return createFallbackResponse(query);
         } catch (Exception e) {
             // Degraded path: return heuristic fallback; avoid ERROR + full stack on every LLM/cache glitch.
             log().warn("NER: Unexpected error analyzing query '{}': {}", query, e.getMessage());
@@ -234,25 +257,50 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
             return createFallbackResponse(query);
         }
     }
-    
-    /**
-     * Analyzes the query with robust validation and normalization.
-     */
-    @Cacheable(value = "nerAnalysis", keyGenerator = "nerCacheKeyGenerator")
-    private JSONObject analyseWithCache(String query) {
-        if (chatClient == null) {
-            log().warn("NER: ChatClient is not configured, returning fallback analysis");
+
+    @Override
+    public JSONObject analyse(ExecutionContext ctx, String query) {
+        if (query == null || query.isBlank()) {
+            log().warn("NER: Empty query provided");
             return createFallbackResponse(query);
         }
-        // Use simple string replacement instead of PromptTemplate to avoid issues with [ and ] in JSON examples
-        String prompt = NER_PROMPT.replace("{query}", query);
+        try {
+            String template = resolvePromptTemplate(ctx);
+            return analyseWithResolvedPrompt(ctx, query, template);
+        } catch (OptionalLlmCallBudgetSkippedException e) {
+            log().info("NER: skipped LLM extraction for query (budget): {}", e.getMessage());
+            return createFallbackResponse(query);
+        } catch (Exception e) {
+            log().warn("NER: Unexpected error analyzing query '{}': {}", query, e.getMessage());
+            log().debug("NER: analysis failure detail", e);
+            return createFallbackResponse(query);
+        }
+    }
+    
+    /**
+     * Analyzes the query with robust validation and normalization (cached; default prompt only).
+     */
+    @Cacheable(value = "nerAnalysis", keyGenerator = "nerCacheKeyGenerator")
+    private JSONObject analyseWithCache(String query, String promptTemplate, @Nullable ExecutionContext ctx) {
+        return runLlmAnalysis(query, promptTemplate, ctx);
+    }
 
-        String response = chatClient
-                .prompt()
-                .system(getSystemPrompt())
-                .user(prompt)
-                .call()
-                .content();
+    private JSONObject analyseWithResolvedPrompt(ExecutionContext ctx, String query, String promptTemplate) {
+        return runLlmAnalysis(query, promptTemplate, ctx);
+    }
+
+    private JSONObject runLlmAnalysis(String query, String promptTemplate, @Nullable ExecutionContext ctx) {
+        if (secondaryLlmExecutor == null) {
+            log().warn("NER: secondary LLM executor is not configured, returning fallback analysis");
+            return createFallbackResponse(query);
+        }
+        String prompt = promptTemplate.replace("{query}", query);
+
+        String response =
+                ctx != null
+                        ? secondaryLlmExecutor.complete(
+                                ctx, "ner-extraction", getSystemPrompt(), prompt, null)
+                        : secondaryLlmExecutor.complete("ner-extraction", getSystemPrompt(), prompt);
 
         if (response == null || response.trim().isEmpty()) {
             log().warn("NER: Empty response from LLM for query: {}", query);
@@ -260,7 +308,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         }
 
         String cleanResponse = cleanJsonResponse(response);
-        
+
         log().info("NER-QUERY: Raw response length: {}, Cleaned response:\n{}", response.length(), cleanResponse);
 
         if (!cleanResponse.trim().startsWith("{")) {
@@ -277,6 +325,18 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
             }
         }
 
+        return parseAndNormalizeResponse(cleanResponse, query);
+    }
+
+    private String resolvePromptTemplate(ExecutionContext ctx) {
+        if (promptResolver == null || ctx == null) {
+            return NER_PROMPT;
+        }
+        return promptResolver.resolve(
+                ConfigurablePromptGroup.NER_EXTRACTION, ctx.userId(), ctx.projectId());
+    }
+
+    private JSONObject parseAndNormalizeResponse(String cleanResponse, String query) {
         try {
             JSONObject json = parseNerJson(cleanResponse);
             validateAndNormalize(json);
@@ -442,22 +502,25 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
      * Normalizes date values to standard formats
      */
     private void normalizeDates(JSONObject json) {
-        if (json.has("date")) {
-            JSONArray dates = json.getJSONArray("date");
-            JSONArray normalizedDates = new JSONArray();
-            
-            for (int i = 0; i < dates.length(); i++) {
-                String dateStr = dates.getString(i);
-                String normalized = normalizeDate(dateStr);
-                if (normalized != null) {
-                    normalizedDates.put(normalized);
-                } else {
-                    normalizedDates.put(dateStr); // Keep original if can't normalize
-                }
-            }
-            
-            json.put("date", normalizedDates);
+        if (!json.has("date") || json.isNull("date")) {
+            return;
         }
+        List<String> dates = NerDateFieldSupport.readDateStrings(json);
+        if (dates.isEmpty()) {
+            return;
+        }
+        JSONArray normalizedDates = new JSONArray();
+
+        for (String dateStr : dates) {
+            String normalized = normalizeDate(dateStr);
+            if (normalized != null) {
+                normalizedDates.put(normalized);
+            } else {
+                normalizedDates.put(dateStr); // Keep original if can't normalize
+            }
+        }
+
+        json.put("date", normalizedDates);
     }
 
     /**

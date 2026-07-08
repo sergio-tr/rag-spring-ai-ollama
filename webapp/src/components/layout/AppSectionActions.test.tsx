@@ -12,10 +12,14 @@ const mockPush = vi.fn();
 const mockRefresh = vi.fn();
 const mockSearchParams = vi.fn(() => new URLSearchParams());
 
-vi.mock("@/navigation", () => ({
-  usePathname: () => mockPathname(),
-  useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
-}));
+vi.mock("@/navigation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/navigation")>();
+  return {
+    ...actual,
+    usePathname: () => mockPathname(),
+    useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
+  };
+});
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => mockSearchParams(),
@@ -123,7 +127,7 @@ describe("AppSectionActions", () => {
     await user.click(screen.getByRole("button", { name: /projects actions/i }));
     const deleteAll = screen.getByRole("menuitem", { name: /delete all projects/i });
     expect(deleteAll).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getByText(/Not available — delete projects individually/i)).toBeInTheDocument();
+    expect(screen.getByText(/Not available - delete projects individually/i)).toBeInTheDocument();
   });
 
   it("documents menu disables refresh without an active project", async () => {

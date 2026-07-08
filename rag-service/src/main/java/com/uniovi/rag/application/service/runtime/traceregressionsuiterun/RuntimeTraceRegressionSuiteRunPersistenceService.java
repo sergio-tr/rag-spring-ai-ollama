@@ -25,16 +25,16 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * P41 — run snapshot persistence adapter: writes and reads {@code runtime_trace_regression_suite_run*} only from a
+ * P41 - run snapshot persistence adapter: writes and reads {@code runtime_trace_regression_suite_run*} only from a
  * supplied {@link RuntimeTraceRegressionSuiteResult}. Does not execute suites or touch definition services.
  *
- * <p>P48 — {@link #deleteRunForUser} removes a run row for the owning user; entry rows are removed only via DB {@code ON
+ * <p>P48 - {@link #deleteRunForUser} removes a run row for the owning user; entry rows are removed only via DB {@code ON
  * DELETE CASCADE} (no application deletes against {@code runtime_trace_regression_suite_run_entry}).
  *
- * <p>P50 — {@link #listSummariesForUserAndDefinition} and {@link #loadByIdForUserAndDefinition} scope reads by owning user
+ * <p>P50 - {@link #listSummariesForUserAndDefinition} and {@link #loadByIdForUserAndDefinition} scope reads by owning user
  * and saved-definition id (single-query detail path).
  *
- * <p>P51 — {@link #deleteRunForUserAndDefinition} deletes a run row only when {@code id}, {@code user_id}, and
+ * <p>P51 - {@link #deleteRunForUserAndDefinition} deletes a run row only when {@code id}, {@code user_id}, and
  * {@code definition_id} all match; entries cascade via DB only (same as P48). {@link #deleteRunForUser} remains the global
  * two-column delete (unchanged).
  */
@@ -286,7 +286,7 @@ public class RuntimeTraceRegressionSuiteRunPersistenceService {
     }
 
     /**
-     * Truncates to at most {@code max} Unicode code points (not Java {@code char} units) — same rule as P30 suite
+     * Truncates to at most {@code max} Unicode code points (not Java {@code char} units) - same rule as P30 suite
      * service without depending on it.
      */
     private static String capCodePoints(String s, int max) {

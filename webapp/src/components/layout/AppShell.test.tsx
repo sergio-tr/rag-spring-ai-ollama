@@ -7,12 +7,31 @@ import { AppShell } from "./AppShell";
 /** Locale-free pathname as returned by next-intl navigation helpers. */
 let pathnameMock = "/chat";
 
+const push = vi.fn();
+const refresh = vi.fn();
+const routerMock = { push, refresh };
+
 vi.mock("@/navigation", () => ({
   Link: ({ children, href }: { children: React.ReactNode; href: string }) => (
     <a href={href}>{children}</a>
   ),
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => routerMock,
   usePathname: () => pathnameMock,
+}));
+
+vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ clear: vi.fn() }),
+}));
+
+const hardNavigate = vi.fn();
+vi.mock("@/lib/hard-navigation", () => ({
+  hardNavigate: (...args: unknown[]) => hardNavigate(...args),
+}));
+
+const resetRegisteredClientSessionState = vi.fn().mockResolvedValue(undefined);
+vi.mock("@/lib/client-session-reset", () => ({
+  resetRegisteredClientSessionState: (...args: unknown[]) =>
+    resetRegisteredClientSessionState(...args),
 }));
 
 vi.mock("@/store/app.store", () => ({
@@ -20,8 +39,20 @@ vi.mock("@/store/app.store", () => ({
 }));
 
 vi.mock("@/components/layout/AppSidebar", () => ({
-  AppSidebar: ({ variant }: { variant?: string }) => (
-    <div data-testid="sidebar-mock" data-variant={variant ?? "desktop"} />
+  AppSidebar: ({
+    variant,
+    onSignOut,
+  }: {
+    variant?: string;
+    onSignOut?: () => void;
+  }) => (
+    <div data-testid="sidebar-mock" data-variant={variant ?? "desktop"}>
+      {onSignOut ? (
+        <button type="button" onClick={onSignOut}>
+          Sign out
+        </button>
+      ) : null}
+    </div>
   ),
 }));
 
@@ -52,14 +83,44 @@ vi.mock("@/components/auth/SessionExpiredBridge", () => ({
 }));
 
 vi.mock("@/features/auth/lib/session-client", () => ({
-  clearSessionCookie: vi.fn(),
+  clearSessionCookie: vi.fn().mockResolvedValue(undefined),
 }));
+
+import { clearSessionCookie } from "@/features/auth/lib/session-client";
 
 vi.mock("@/features/rag/ExplainabilityPanel", () => ({
   ExplainabilityPanel: () => <div data-testid="explain-mock" />,
 }));
 
 describe("AppShell", () => {
+  beforeEach(() => {
+    pathnameMock = "/chat";
+    push.mockReset();
+    refresh.mockReset();
+    resetRegisteredClientSessionState.mockReset();
+    hardNavigate.mockReset();
+    vi.mocked(clearSessionCookie).mockClear();
+  });
+
+  it("signOut clears session cookie and resets client state", async () => {
+    pathnameMock = "/projects";
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider locale="en">
+        <AppShell panelBody={null}>
+          <span>x</span>
+        </AppShell>
+      </IntlTestProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: /sign out/i }));
+    await vi.waitFor(() => expect(resetRegisteredClientSessionState).toHaveBeenCalled());
+    expect(clearSessionCookie).toHaveBeenCalled();
+    expect(resetRegisteredClientSessionState).toHaveBeenCalledWith(
+      expect.objectContaining({ queryClient: expect.any(Object) }),
+    );
+    expect(hardNavigate).toHaveBeenCalledWith("/login", "en");
+  });
+
   it("renders primary toolbar inside the main column", () => {
     pathnameMock = "/projects";
     render(
@@ -114,10 +175,6 @@ describe("AppShell", () => {
     expect(
       screen.getAllByTestId("sidebar-mock").some((el) => el.getAttribute("data-variant") === "drawer"),
     ).toBe(true);
-  });
-
-  beforeEach(() => {
-    pathnameMock = "/chat";
   });
 
   it("uses a full-width container on chat routes", () => {

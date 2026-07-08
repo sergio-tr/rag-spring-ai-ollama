@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class ChatPresetDefaults {
 
-    /** Stable id from migration {@code V18__demo_rag_presets.sql} — preset name {@code Demo_Best}. */
+    /** Stable id from migration {@code V18__demo_rag_presets.sql} - preset name {@code Demo_Best}. */
     public static final UUID DETERMINISTIC_DEFAULT_CHAT_PRESET_ID =
             UUID.fromString("cafe0001-0001-4001-8001-000000000003");
 

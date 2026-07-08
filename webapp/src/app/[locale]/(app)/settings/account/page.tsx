@@ -1,9 +1,11 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { AccountExportPanel } from "@/features/settings/components/AccountExportPanel";
 import { clearSessionCookie } from "@/features/auth/lib/session-client";
-import { useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
+import { resetRegisteredClientSessionState } from "@/lib/client-session-reset";
+import { hardNavigate } from "@/lib/hard-navigation";
+import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Card,
@@ -24,7 +26,8 @@ const DELETE_POLL_MAX_MS = 180_000;
 
 export default function SettingsAccountPage() {
   const t = useTranslations("Settings");
-  const router = useRouter();
+  const locale = useLocale();
+  const queryClient = useQueryClient();
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleteEmail, setDeleteEmail] = useState("");
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
@@ -77,8 +80,9 @@ export default function SettingsAccountPage() {
       });
       if (terminal.status === "SUCCEEDED") {
         await clearSessionCookie();
+        await resetRegisteredClientSessionState({ queryClient });
         setDeleteStatus(t("accountDeletionSucceeded"));
-        router.replace("/login");
+        hardNavigate("/login", locale);
         return;
       }
       setDeleteStatus(terminal.errorMessage ?? t("accountDeletionError"));
@@ -87,7 +91,7 @@ export default function SettingsAccountPage() {
     } finally {
       setDeleteBusy(false);
     }
-  }, [canDelete, deleteEmail, router, t]);
+  }, [canDelete, deleteEmail, locale, queryClient, t]);
 
   const deleteHint = useMemo(() => {
     if (!confirmValid || !emailValid) {

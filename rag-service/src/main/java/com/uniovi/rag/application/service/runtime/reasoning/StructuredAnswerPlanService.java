@@ -2,8 +2,9 @@ package com.uniovi.rag.application.service.runtime.reasoning;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
+import com.uniovi.rag.domain.llm.ResolvedLlmConfig;
 import com.uniovi.rag.domain.model.QueryType;
-import com.uniovi.rag.application.service.runtime.ChatGenerationModelSelector;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
@@ -13,8 +14,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.stereotype.Service;
 
 /**
@@ -24,6 +23,8 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class StructuredAnswerPlanService {
+
+    public static final String OPERATION_STRUCTURED_ANSWER_PLAN = "structured-answer-plan";
 
     private static final int MAX_MODEL_OUTPUT_CHARS = 2000;
     private static final int MAX_SAFE_SUMMARY_CHARS = 220;
@@ -54,17 +55,13 @@ public class StructuredAnswerPlanService {
             QueryType: %s
             """;
 
-    private final ChatClient chatClient;
+    private final ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
     private final ObjectMapper objectMapper;
-    private final ChatGenerationModelSelector chatGenerationModelSelector;
 
     public StructuredAnswerPlanService(
-            ChatClient chatClient,
-            ObjectMapper objectMapper,
-            ChatGenerationModelSelector chatGenerationModelSelector) {
-        this.chatClient = chatClient;
+            ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor, ObjectMapper objectMapper) {
+        this.secondaryLlmExecutor = secondaryLlmExecutor;
         this.objectMapper = objectMapper;
-        this.chatGenerationModelSelector = chatGenerationModelSelector;
     }
 
     public PlanResult plan(ExecutionContext ctx, QueryPlan plan) {
@@ -75,12 +72,14 @@ public class StructuredAnswerPlanService {
             QueryType type = plan != null ? plan.classifierQueryType().orElse(null) : null;
             String prompt = String.format(PROMPT, queryText, type != null ? type.name() : "UNKNOWN");
 
-            var spec = chatClient.prompt().user(prompt);
-            if (ctx != null) {
-                chatGenerationModelSelector.effectiveChatModelId(ctx)
-                        .ifPresent(m -> spec.options(OllamaOptions.builder().model(m).build()));
-            }
-            String raw = spec.call().content();
+            String raw =
+                    secondaryLlmExecutor.complete(
+                            ctx,
+                            OPERATION_STRUCTURED_ANSWER_PLAN,
+                            null,
+                            prompt,
+                            ProviderAwareSecondaryLlmExecutor.SECONDARY_TASK_DEFAULT_TEMPERATURE);
+            ResolvedLlmConfig config = secondaryLlmExecutor.effectiveConfig(ctx);
             String trimmed = safe(raw, MAX_MODEL_OUTPUT_CHARS);
             StructuredAnswerPlan out = parse(trimmed);
             ExecutionStageTrace trace =
@@ -88,7 +87,16 @@ public class StructuredAnswerPlanService {
                             "reasoning_plan",
                             TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0),
                             ExecutionStageOutcome.SUCCESS,
-                            "strategy=" + out.strategy() + " summary=" + safe(out.safeSummary(), MAX_SAFE_SUMMARY_CHARS));
+                            "strategy="
+                                    + out.strategy()
+                                    + " summary="
+                                    + safe(out.safeSummary(), MAX_SAFE_SUMMARY_CHARS)
+                                    + " operation="
+                                    + OPERATION_STRUCTURED_ANSWER_PLAN
+                                    + " provider="
+                                    + config.chatProvider()
+                                    + " model="
+                                    + config.chatModel());
             return new PlanResult(Optional.of(out), List.of(trace));
         } catch (Exception e) {
             ExecutionStageTrace trace =
@@ -126,7 +134,6 @@ public class StructuredAnswerPlanService {
                     verify,
                     safeSummary);
         } catch (Exception e) {
-            // Fall back to a minimal safe plan without trusting arbitrary model text.
             return new StructuredAnswerPlan(
                     "SAFE_STRUCTURED_PLAN",
                     "",
@@ -178,4 +185,3 @@ public class StructuredAnswerPlanService {
 
     public record PlanResult(Optional<StructuredAnswerPlan> plan, List<ExecutionStageTrace> stageTraces) {}
 }
-

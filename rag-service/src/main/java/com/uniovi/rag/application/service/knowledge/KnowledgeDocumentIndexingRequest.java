@@ -17,4 +17,27 @@ public record KnowledgeDocumentIndexingRequest(
         KnowledgeIndexSnapshotEntity snapshot,
         String indexSigHex,
         MaterializationStrategy strategy,
-        int effectiveChunkMaxChars) {}
+        int effectiveChunkMaxChars,
+        ProjectIndexProfileResolver.ResolvedIngestionIndexProfile ingestionProfile) {
+
+    public KnowledgeDocumentIndexingRequest(
+            KnowledgeDocumentEntity doc,
+            Path tempFileOverride,
+            String originalFilename,
+            String contentType,
+            KnowledgeIndexSnapshotEntity snapshot,
+            String indexSigHex,
+            MaterializationStrategy strategy,
+            int effectiveChunkMaxChars) {
+        this(
+                doc,
+                tempFileOverride,
+                originalFilename,
+                contentType,
+                snapshot,
+                indexSigHex,
+                strategy,
+                effectiveChunkMaxChars,
+                null);
+    }
+}

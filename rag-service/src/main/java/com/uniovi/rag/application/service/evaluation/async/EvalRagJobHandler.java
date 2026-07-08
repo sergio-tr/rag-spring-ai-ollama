@@ -117,7 +117,7 @@ class EvalRagJobHandler implements LabJobHandler {
         try {
             if (evaluationRunId == null) {
                 throw new IllegalStateException(
-                        "This RAG evaluation job is missing its run reference — start a new RAG preset benchmark"
+                        "This RAG evaluation job is missing its run reference - start a new RAG preset benchmark"
                                 + " from the Lab evaluation page with a compatible workbook.");
             }
             Map<String, Object> payload = runSingleRagRun(task, mutation, evaluationRunId);

@@ -21,5 +21,7 @@
 | [`wave-pilot.md`](wave-pilot.md) | Pilot wave: objectives, run records, reproducibility lessons. |
 | [`wave-comparative.md`](wave-comparative.md) | Comparative wave: frozen code window, mandatory baselines, ablation matrix execution log. |
 | [`final-evaluation-synthesis.md`](final-evaluation-synthesis.md) | Closing package: synthesis, validity threats, metric limits, artefact index. |
+| [`evaluation-protocol.md`](evaluation-protocol.md) | Layered evaluation protocol: datasets, metrics, exports, decision criteria (pre-campaign gate). |
+| [`classifier-status-freeze.md`](classifier-status-freeze.md) | Classifier accepted (sklearn C3, macro-F1 0.9663); historical Keras freeze superseded 2026-07-02. |
 
 **Documentation allowlist for edits:** this tree (`docs/research/**`), plus `docs/architecture/**` (excluding denylisted files), `docs/ai/**`, `docs/adr/**`, and optional short pointer in `rag-service/README.md`. Do not edit `docs/architecture/DATA_MODEL.md` or `docs/architecture/configuration-resolution-model.md` unless a separate project decision overrides that denylist.

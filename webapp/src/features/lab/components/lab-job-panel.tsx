@@ -7,7 +7,7 @@ import {
   readBenchmarkClosureFromTask,
   isEmptyBenchmarkSuccess,
 } from "@/features/lab/lib/lab-rag-closure";
-import { mapUserFacingErrorMessage } from "@/lib/user-facing-error-messages";
+import { UserFacingErrorNotice } from "@/lib/user-facing-error-notice";
 import {
   getLabJobStatusLabel,
   getLabJobUiPhase,
@@ -34,13 +34,13 @@ type LabJobPanelProps = Readonly<{
   progressSnapshot?: LabProgressSnapshot;
   /** Shown while waiting for first SSE tick */
   queuedHint?: boolean;
-  /** Legacy local abort flag — mapped to reconnecting copy, not a destructive error */
+  /** Legacy local abort flag - mapped to reconnecting copy, not a destructive error */
   stoppedWaiting?: boolean;
   /** Canonical SSE connection state from {@link useLabJobLiveStream}. */
   connectionState?: LabJobLiveConnectionState | null;
   /** Monotonic seconds since async watch began (local UI clock). */
   watchElapsedSeconds?: number;
-  /** Debug/fallback only — hidden in normal live-watcher flow. */
+  /** Debug/fallback only - hidden in normal live-watcher flow. */
   showResumeFallback?: boolean;
   onResumeLive?: () => void;
 }>;
@@ -127,10 +127,8 @@ export function LabJobPanel({
     }
   };
 
-  const friendlyFailure =
-    phase === "failed" && taskStatus?.errorMessage?.trim()
-      ? mapUserFacingErrorMessage(taskStatus.errorMessage, t, t("jobUiFailed")).slice(0, 280)
-      : null;
+  const failureRaw =
+    phase === "failed" && taskStatus?.errorMessage?.trim() ? taskStatus.errorMessage.trim() : null;
   const closureClassificationHint = benchmarkClosure
     ? closureClassificationLabel(benchmarkClosure.classification, t)
     : null;
@@ -163,8 +161,14 @@ export function LabJobPanel({
       {phase === "idle" ? null : (
         <div className="flex flex-col gap-2">
           <InlineHelpStatus status={traceStatus} label={statusLabel} className="max-w-full" />
-          {friendlyFailure ? (
-            <output className="text-muted-foreground block text-xs">{friendlyFailure}</output>
+          {failureRaw ? (
+            <UserFacingErrorNotice
+              raw={failureRaw}
+              fallback={t("jobUiFailed")}
+              t={t}
+              testId="lab-job-user-error"
+              className="text-xs"
+            />
           ) : null}
           {showEmptySuccessWarning ? (
             <output className="text-destructive block text-xs font-medium" data-testid="lab-empty-success-warning">

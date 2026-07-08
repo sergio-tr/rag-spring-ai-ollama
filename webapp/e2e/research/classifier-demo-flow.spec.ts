@@ -16,7 +16,7 @@ import {
 } from "../support/helpers";
 
 /**
- * Research/demo variant — prefer {@code e2e/closure/classifier-train-evaluate-activate.spec.ts} for Wave 3 gate.
+ * Research/demo variant - prefer {@code e2e/closure/classifier-train-evaluate-activate.spec.ts} for Wave 3 gate.
  */
 test.describe.serial("Demo classifier flow @fullstack @demoHeavy", () => {
   test("train, evaluate, activate, classify, and expose selected model for chat @fullstack", async ({ page }) => {

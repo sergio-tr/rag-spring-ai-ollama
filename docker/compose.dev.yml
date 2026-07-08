@@ -22,7 +22,8 @@ services:
       context: ../classifier-service
       dockerfile: Dockerfile.dev
       args:
-        BASE_IMAGE: ${CLASSIFIER_PYTHON_BASE_IMAGE:-nvidia/cuda:12.5.1-cudnn-runtime-ubuntu22.04}
+        BASE_IMAGE: ${CLASSIFIER_PYTHON_BASE_IMAGE:-python:3.10-slim-bookworm}
+        INSTALL_GPU_EXTRAS: ${CLASSIFIER_INSTALL_GPU_EXTRAS:-0}
     volumes:
       - ../classifier-service/app:/app/app
       - ../classifier-service/uvicorn_entry.py:/app/uvicorn_entry.py
@@ -33,7 +34,7 @@ services:
       TF_CPP_MIN_LOG_LEVEL: "2"
       GLOG_minloglevel: "2"
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8000')+'/health', timeout=5)\" || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8000')+'/health', timeout=5)\" || exit 1"]
       interval: 10s
       timeout: 8s
       retries: 5
@@ -74,6 +75,7 @@ services:
       # Ollama URL: same rag-service/.env keys as production backend (host.docker.internal, ollama:11434, etc.).
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       SPRING_AI_OLLAMA_BASE_URL: ${SPRING_AI_OLLAMA_BASE_URL:-${OLLAMA_BASE_URL:-http://host.docker.internal:11434}}
+      RAG_STORAGE_ROOT: ${RAG_STORAGE_ROOT:-/var/lib/rag/storage}
       # OpenAI-compatible / LiteLLM (values from rag-service/.env via compose --env-file; never hardcode secrets).
       OPENAI_COMPATIBLE_API_KEY: ${OPENAI_COMPATIBLE_API_KEY}
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-}
@@ -89,6 +91,7 @@ services:
     volumes:
       - ../rag-service:/app
       - rag_m2_cache:/root/.m2
+      - rag_binary_storage:${RAG_STORAGE_ROOT:-/var/lib/rag/storage}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

@@ -2,6 +2,9 @@ package com.uniovi.rag.interfaces.rest;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.application.config.ConfigurablePromptCatalogService;
+import com.uniovi.rag.application.config.PromptTemplateValidator;
+import com.uniovi.rag.application.config.TaskLlmCatalogService;
 import com.uniovi.rag.application.config.ConfigurationSchemaProvider;
 import com.uniovi.rag.application.config.RuntimeConfigResolutionInput;
 import com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService;
@@ -46,6 +49,8 @@ import java.util.UUID;
 public class ConfigController {
 
     private final ConfigurationSchemaProvider configurationSchemaProvider;
+    private final ConfigurablePromptCatalogService configurablePromptCatalogService;
+    private final TaskLlmCatalogService taskLlmCatalogService;
     private final UserProjectConfigurationService userProjectConfigurationService;
     private final RuntimeConfigResolutionService runtimeConfigResolutionService;
     private final ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService;
@@ -53,11 +58,15 @@ public class ConfigController {
 
     public ConfigController(
             ConfigurationSchemaProvider configurationSchemaProvider,
+            ConfigurablePromptCatalogService configurablePromptCatalogService,
+            TaskLlmCatalogService taskLlmCatalogService,
             UserProjectConfigurationService userProjectConfigurationService,
             RuntimeConfigResolutionService runtimeConfigResolutionService,
             ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService,
             ObjectMapper objectMapper) {
         this.configurationSchemaProvider = configurationSchemaProvider;
+        this.configurablePromptCatalogService = configurablePromptCatalogService;
+        this.taskLlmCatalogService = taskLlmCatalogService;
         this.userProjectConfigurationService = userProjectConfigurationService;
         this.runtimeConfigResolutionService = runtimeConfigResolutionService;
         this.resolvedConfigSnapshotApplicationService = resolvedConfigSnapshotApplicationService;
@@ -67,6 +76,16 @@ public class ConfigController {
     @GetMapping("/schema")
     public Map<String, Object> schema() {
         return configurationSchemaProvider.buildSchema();
+    }
+
+    @GetMapping("/prompt-catalog")
+    public Map<String, Object> promptCatalog() {
+        return configurablePromptCatalogService.buildCatalog();
+    }
+
+    @GetMapping("/task-llm-catalog")
+    public Map<String, Object> taskLlmCatalog() {
+        return taskLlmCatalogService.buildCatalog();
     }
 
     /**
@@ -146,9 +165,15 @@ public class ConfigController {
         return userProjectConfigurationService.getEffectiveUserConfig(principal.userId());
     }
 
+    @GetMapping("/user/stored")
+    public Map<String, Object> getStoredUserConfig(@AuthenticationPrincipal RagPrincipal principal) {
+        return userProjectConfigurationService.getStoredUserConfig(principal.userId());
+    }
+
     @Operation(
             summary = "Replace user-default RAG configuration",
-            description = "Persists USER_DEFAULT rag_configuration for the authenticated user.")
+            description =
+                    "Merges patch into USER_DEFAULT rag_configuration. Null values remove stored overrides.")
     @PutMapping("/user")
     public Map<String, Object> putUserConfig(
             @AuthenticationPrincipal RagPrincipal principal, @RequestBody Map<String, Object> body) {
@@ -159,6 +184,12 @@ public class ConfigController {
     public Map<String, Object> getProjectConfig(
             @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID projectId) {
         return userProjectConfigurationService.getEffectiveProjectConfig(principal.userId(), projectId);
+    }
+
+    @GetMapping("/project/{projectId}/stored")
+    public Map<String, Object> getStoredProjectConfig(
+            @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID projectId) {
+        return userProjectConfigurationService.getStoredProjectConfig(principal.userId(), projectId);
     }
 
     @PutMapping("/project/{projectId}")

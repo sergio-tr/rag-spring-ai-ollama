@@ -44,7 +44,7 @@ describe("ChatAssistantMessageExtras", () => {
     expect(screen.queryByText(/No sources available/i)).not.toBeInTheDocument();
   });
 
-  it("shows collapsed More information for completed answers", () => {
+  it("shows collapsed Details for completed answers", () => {
     renderExtras({
       id: "a-done",
       role: "ASSISTANT",
@@ -56,9 +56,13 @@ describe("ChatAssistantMessageExtras", () => {
       status: "DONE",
       executionMetadata: { traceId: "trace-1" },
     });
-    expect(screen.getByTestId("chat-message-metadata-toggle")).toHaveTextContent(/More information/i);
+    expect(screen.getByTestId("chat-message-metadata-toggle")).toHaveTextContent(/Answer quality checks/i);
+    expect(screen.queryByText(/More information/i)).not.toBeInTheDocument();
     expect(screen.getByTestId("chat-sources")).not.toBeVisible();
-    expect(screen.getByTestId("chat-trace")).not.toBeVisible();
+    const trace = screen.queryByTestId("chat-trace");
+    if (trace) {
+      expect(trace).not.toBeVisible();
+    }
   });
 
   it("reveals sources and trace when expanded", async () => {
@@ -77,7 +81,11 @@ describe("ChatAssistantMessageExtras", () => {
     await user.click(screen.getByTestId("chat-message-metadata-toggle"));
     const panel = screen.getByTestId("chat-message-metadata-panel");
     expect(within(panel).getByTestId("chat-sources")).toBeVisible();
+    const traceDisclosure = within(panel).getByTestId("chat-trace-disclosure");
+    expect(traceDisclosure).not.toHaveAttribute("open");
+    await user.click(within(traceDisclosure).getByText(/Advanced technical details/i));
     expect(within(panel).getByTestId("chat-trace")).toBeVisible();
+    expect(within(panel).getByTestId("chat-sources")).toHaveTextContent(/Source documents/i);
     expect(within(panel).getByTestId("chat-sources")).toHaveTextContent("doc.pdf");
     expect(within(panel).getByTestId("chat-trace")).toHaveTextContent("trace-1");
   });
@@ -97,5 +105,58 @@ describe("ChatAssistantMessageExtras", () => {
     expect(screen.queryByText(/No sources available for this answer/i)).not.toBeVisible();
     await user.click(screen.getByTestId("chat-message-metadata-toggle"));
     expect(screen.getByTestId("chat-sources")).toHaveTextContent(/No sources available for this answer/i);
+  });
+
+  it("groups duplicate filenames in expanded panel @SourceDedup", async () => {
+    const user = userEvent.setup();
+    renderExtras({
+      id: "a-dedup",
+      role: "ASSISTANT",
+      content: "Done",
+      createdAt: "",
+      sources: [
+        chatSource({ filename: "acta.pdf", chunkIndex: 1 }),
+        chatSource({ filename: "acta.pdf", chunkIndex: 2 }),
+      ],
+      queryType: "DOCUMENT",
+      pipelineSteps: [],
+      status: "DONE",
+    });
+    await user.click(screen.getByTestId("chat-message-metadata-toggle"));
+    const groups = screen.getAllByTestId("chat-source-group");
+    expect(groups).toHaveLength(1);
+    expect(screen.getByTestId("chat-source-chunks-toggle")).toHaveTextContent(/2 chunks/i);
+  });
+
+  it("shows retrieval stage counts and reduction reason when final context is below effective topK", async () => {
+    const user = userEvent.setup();
+    renderExtras({
+      id: "a-trace-reduction",
+      role: "ASSISTANT",
+      content: "Done",
+      createdAt: "",
+      sources: [],
+      queryType: "DOCUMENT",
+      pipelineSteps: [],
+      status: "DONE",
+      executionMetadata: {
+        traceId: "trace-2",
+        retrievalEffectiveTopK: 8,
+        retrievalEffectiveSimilarityThreshold: 0.1,
+        retrievalDenseCandidateCount: 8,
+        retrievalAfterFilterCount: 8,
+        retrievalAfterCompressionCount: 3,
+        retrievalContextReductionReason: "section_merge",
+      },
+    });
+    await user.click(screen.getByTestId("chat-message-metadata-toggle"));
+    const traceDisclosure = screen.getByTestId("chat-trace-disclosure");
+    await user.click(within(traceDisclosure).getByText(/Advanced technical details/i));
+    const trace = screen.getByTestId("chat-trace");
+    expect(trace).toHaveTextContent("effectiveTopK=8");
+    expect(trace).toHaveTextContent("threshold=0.1");
+    expect(trace).toHaveTextContent("dense=8");
+    expect(trace).toHaveTextContent("final=3");
+    expect(screen.getByTestId("chat-trace-reduction-reason")).toHaveTextContent(/Section merge/i);
   });
 });

@@ -104,7 +104,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Microphase 5.52 — P60 observable HTTP contract gate ({@code T-P60-e2e}, {@code T-P60-errors}).
+ * Microphase 5.52 - P60 observable HTTP contract gate ({@code T-P60-e2e}, {@code T-P60-errors}).
  *
  * <p>FD-p60-arch-inventory: each {@code P60-M-xx} binds to the authoritative {@code Class#method} named in the
  * microphase plan Compatibility matrix; each {@code p60_mXX} test re-states the same MockMvc observables.
@@ -113,7 +113,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public class RuntimeTraceRegressionSuiteEndToEndContractTest {
 
     /*
-     * FD-p60-arch-inventory (T-P60-e2e, T-P60-errors) — matrix row binding:
+     * FD-p60-arch-inventory (T-P60-e2e, T-P60-errors) - matrix row binding:
      * P60-M-01 authoritative com.uniovi.rag.interfaces.rest.RuntimeTraceRegressionSuiteRunControllerTest#list_noQueryString_emptyService_returns200_emptyRuns
      * P60-M-01 p60 p60_m01
      * P60-M-02 authoritative com.uniovi.rag.interfaces.rest.RuntimeTraceRegressionSuiteRunControllerTest#list_queryParam_returns400_emptyBody
@@ -269,7 +269,7 @@ public class RuntimeTraceRegressionSuiteEndToEndContractTest {
     // --- Nested @WebMvcTest slices follow (authoritative parity per matrix row). ---
 
     @Nested
-    @DisplayName("P60 slice — RuntimeTraceRegressionSuiteRunController")
+    @DisplayName("P60 slice - RuntimeTraceRegressionSuiteRunController")
     @WebMvcTest(controllers = RuntimeTraceRegressionSuiteRunController.class)
     @ContextConfiguration(classes = RagWebMvcTestApplication.class)
     @AutoConfigureMockMvc(addFilters = false)
@@ -624,7 +624,7 @@ public class RuntimeTraceRegressionSuiteEndToEndContractTest {
     }
 
     @Nested
-    @DisplayName("P60 slice — RuntimeTraceRegressionSuiteRunExportController (200/4xx)")
+    @DisplayName("P60 slice - RuntimeTraceRegressionSuiteRunExportController (200/4xx)")
     @WebMvcTest(controllers = RuntimeTraceRegressionSuiteRunExportController.class)
     @ContextConfiguration(classes = RagWebMvcTestApplication.class)
     @AutoConfigureMockMvc(addFilters = false)
@@ -765,7 +765,7 @@ public class RuntimeTraceRegressionSuiteEndToEndContractTest {
     }
 
     @Nested
-    @DisplayName("P60 slice — RuntimeTraceRegressionSuiteRunExportController (413)")
+    @DisplayName("P60 slice - RuntimeTraceRegressionSuiteRunExportController (413)")
     @WebMvcTest(controllers = RuntimeTraceRegressionSuiteRunExportController.class)
     @ContextConfiguration(classes = RagWebMvcTestApplication.class)
     @AutoConfigureMockMvc(addFilters = false)
@@ -839,7 +839,7 @@ public class RuntimeTraceRegressionSuiteEndToEndContractTest {
     }
 
     @Nested
-    @DisplayName("P60 slice — RuntimeTraceRegressionSuiteRunImportController")
+    @DisplayName("P60 slice - RuntimeTraceRegressionSuiteRunImportController")
     @WebMvcTest(controllers = RuntimeTraceRegressionSuiteRunImportController.class)
     @ContextConfiguration(classes = RagWebMvcTestApplication.class)
     @AutoConfigureMockMvc(addFilters = false)
@@ -941,7 +941,7 @@ public class RuntimeTraceRegressionSuiteEndToEndContractTest {
     }
 
     @Nested
-    @DisplayName("P60 slice — RuntimeTraceRegressionSuiteRunImportPreviewController")
+    @DisplayName("P60 slice - RuntimeTraceRegressionSuiteRunImportPreviewController")
     @WebMvcTest(controllers = RuntimeTraceRegressionSuiteRunImportPreviewController.class)
     @ContextConfiguration(classes = RagWebMvcTestApplication.class)
     @AutoConfigureMockMvc(addFilters = false)
@@ -1031,7 +1031,7 @@ public class RuntimeTraceRegressionSuiteEndToEndContractTest {
     }
 
     @Nested
-    @DisplayName("P60 slice — RuntimeTraceRegressionSuiteDefinitionExportController")
+    @DisplayName("P60 slice - RuntimeTraceRegressionSuiteDefinitionExportController")
     @WebMvcTest(controllers = RuntimeTraceRegressionSuiteDefinitionExportController.class)
     @ContextConfiguration(classes = RagWebMvcTestApplication.class)
     @AutoConfigureMockMvc(addFilters = false)
@@ -1163,7 +1163,7 @@ public class RuntimeTraceRegressionSuiteEndToEndContractTest {
     }
 
     @Nested
-    @DisplayName("P60 slice — RuntimeTraceRegressionSuiteDefinitionImportController")
+    @DisplayName("P60 slice - RuntimeTraceRegressionSuiteDefinitionImportController")
     @WebMvcTest(controllers = RuntimeTraceRegressionSuiteDefinitionImportController.class)
     @ContextConfiguration(classes = RagWebMvcTestApplication.class)
     @AutoConfigureMockMvc(addFilters = false)
@@ -1279,7 +1279,7 @@ public class RuntimeTraceRegressionSuiteEndToEndContractTest {
     }
 
     @Nested
-    @DisplayName("P60 slice — RuntimeTraceRegressionSuiteDefinitionImportPreviewController")
+    @DisplayName("P60 slice - RuntimeTraceRegressionSuiteDefinitionImportPreviewController")
     @WebMvcTest(controllers = RuntimeTraceRegressionSuiteDefinitionImportPreviewController.class)
     @ContextConfiguration(classes = RagWebMvcTestApplication.class)
     @AutoConfigureMockMvc(addFilters = false)
@@ -1382,7 +1382,7 @@ public class RuntimeTraceRegressionSuiteEndToEndContractTest {
     }
 
     @Nested
-    @DisplayName("P60 slice — RuntimeTraceRegressionSuiteDefinitionExecutionExportController")
+    @DisplayName("P60 slice - RuntimeTraceRegressionSuiteDefinitionExecutionExportController")
     @WebMvcTest(controllers = RuntimeTraceRegressionSuiteDefinitionExecutionExportController.class)
     @ContextConfiguration(classes = RagWebMvcTestApplication.class)
     @AutoConfigureMockMvc(addFilters = false)
@@ -1559,7 +1559,7 @@ public class RuntimeTraceRegressionSuiteEndToEndContractTest {
     }
 
     @Nested
-    @DisplayName("P60 slice — RuntimeTraceRegressionSuiteDefinitionController (read, product API)")
+    @DisplayName("P60 slice - RuntimeTraceRegressionSuiteDefinitionController (read, product API)")
     @WebMvcTest(controllers = RuntimeTraceRegressionSuiteDefinitionController.class)
     @ContextConfiguration(classes = RagWebMvcTestApplication.class)
     @AutoConfigureMockMvc(addFilters = false)
@@ -1714,7 +1714,7 @@ public class RuntimeTraceRegressionSuiteEndToEndContractTest {
     }
 
     @Nested
-    @DisplayName("P60 slice — RuntimeTraceRegressionSuiteDefinitionController (mutate + execute, /api/test)")
+    @DisplayName("P60 slice - RuntimeTraceRegressionSuiteDefinitionController (mutate + execute, /api/test)")
     @WebMvcTest(controllers = RuntimeTraceRegressionSuiteDefinitionController.class)
     @ContextConfiguration(classes = RagWebMvcTestApplication.class)
     @AutoConfigureMockMvc(addFilters = false)
@@ -1955,7 +1955,7 @@ public class RuntimeTraceRegressionSuiteEndToEndContractTest {
     }
 
     @Nested
-    @DisplayName("P60 slice — RuntimeTraceRegressionSuiteDefinitionController (runs under /api/v1)")
+    @DisplayName("P60 slice - RuntimeTraceRegressionSuiteDefinitionController (runs under /api/v1)")
     @WebMvcTest(controllers = RuntimeTraceRegressionSuiteDefinitionController.class)
     @ContextConfiguration(classes = RagWebMvcTestApplication.class)
     @AutoConfigureMockMvc(addFilters = false)

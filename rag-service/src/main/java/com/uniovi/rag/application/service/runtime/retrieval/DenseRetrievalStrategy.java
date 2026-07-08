@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.runtime.retrieval;
 
 import com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityService;
+import com.uniovi.rag.application.service.knowledge.IndexProfileJsonSupport;
 import com.uniovi.rag.configuration.RagVectorProperties;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
@@ -42,7 +43,7 @@ public class DenseRetrievalStrategy {
             PgVectorStore fallbackVectorStore,
             RagVectorProperties ragVectorProperties,
             EmbeddingIndexCompatibilityService embeddingIndexCompatibilityService,
-            @Value("${spring.ai.ollama.top-k:10}") int defaultTopK,
+            @Value("${spring.ai.ollama.top-k:8}") int defaultTopK,
             @Value("${spring.ai.ollama.similarity-threshold:0.7}")
                     double defaultSimilarityThreshold) {
         this.vectorStoreRegistry = vectorStoreRegistry;
@@ -59,9 +60,13 @@ public class DenseRetrievalStrategy {
 
     public DenseRetrievalOutcome retrieveWithOutcome(RetrievalRequest req) {
         embeddingIndexCompatibilityService.assertRetrievalCompatible(req);
-        double sim = effectiveSimilarityThreshold();
+        double presetThreshold = effectiveSimilarityThreshold();
+        double searchThreshold = vectorSearchSimilarityThreshold(req, presetThreshold);
         SearchRequest.Builder searchBuilder =
-                SearchRequest.builder().query(req.queryText()).topK(req.denseFetchLimit()).similarityThreshold(sim);
+                SearchRequest.builder()
+                        .query(req.queryText())
+                        .topK(req.denseFetchLimit())
+                        .similarityThreshold(searchThreshold);
         Filter.Expression snapshotFilter = SnapshotBoundRetrievalFilter.buildForRequest(req.snapshotIds());
         if (snapshotFilter != null) {
             searchBuilder.filterExpression(snapshotFilter);
@@ -106,7 +111,13 @@ public class DenseRetrievalStrategy {
                 break;
             }
         }
-        return new DenseRetrievalOutcome(out, rawCount, postSnapshot.size(), filtered.size());
+        return new DenseRetrievalOutcome(
+                out,
+                rawCount,
+                postSnapshot.size(),
+                filtered.size(),
+                searchThreshold,
+                req.denseFetchLimit());
     }
 
     private PgVectorStore resolveVectorStore(RetrievalRequest req) {
@@ -194,6 +205,31 @@ public class DenseRetrievalStrategy {
             return false;
         }
         return allowed.contains(String.valueOf(id));
+    }
+
+    /**
+     * Lab evaluation runs may bind a genuinely non-default snapshot embedding (e.g. bge-m3). Configured
+     * thresholds above the deployment default are too strict for pgvector prefiltering against those indices,
+     * so the deployment default is used for search instead. This must only fire for a snapshot embedding that
+     * actually differs from the deployment default: every product snapshot carries an explicit
+     * {@code embeddingModelId} (see {@code rag.vector.require-snapshot-embedding-model-id}), so checking mere
+     * presence (rather than non-default-ness) previously clamped every configured
+     * {@code similarityThreshold > 0.15} back down to 0.15 for ordinary product chat too — silently ignoring
+     * project/custom/assistant-configured thresholds above that value (see phase-4-4 RC-THR fix).
+     */
+    private double vectorSearchSimilarityThreshold(RetrievalRequest req, double presetThreshold) {
+        if (presetThreshold <= defaultSimilarityThreshold) {
+            return presetThreshold;
+        }
+        String modelId = req.denseRetrievalEmbeddingModelId().filter(id -> id != null && !id.isBlank()).orElse(null);
+        if (modelId == null) {
+            return presetThreshold;
+        }
+        String deploymentDefault = embeddingIndexCompatibilityService.deploymentDefaultEmbeddingModelId();
+        if (!IndexProfileJsonSupport.embeddingKeysEquivalent(modelId, deploymentDefault)) {
+            return defaultSimilarityThreshold;
+        }
+        return presetThreshold;
     }
 
     private double effectiveSimilarityThreshold() {

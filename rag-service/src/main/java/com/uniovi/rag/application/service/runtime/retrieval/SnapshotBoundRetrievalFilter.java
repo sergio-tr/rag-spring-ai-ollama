@@ -11,11 +11,21 @@ import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 /**
  * Builds Spring AI metadata filters for snapshot-bound dense retrieval (evaluation corpus + project chat).
  */
-final class SnapshotBoundRetrievalFilter {
+public final class SnapshotBoundRetrievalFilter {
 
     private SnapshotBoundRetrievalFilter() {}
 
     static Filter.Expression buildForRequest(List<UUID> snapshotIds) {
+        RagExecutionContext ctx = RagExecutionContextHolder.get();
+        UUID projectId =
+                ctx != null && ctx.restrictsByProject() && ctx.projectId() != null && !ctx.projectId().isBlank()
+                        ? parseUuid(ctx.projectId().trim())
+                        : null;
+        return buildForSnapshotIds(snapshotIds, projectId);
+    }
+
+    /** Snapshot-bound dense retrieval for Lab embedding benchmarks (explicit project scope). */
+    public static Filter.Expression buildForSnapshotIds(List<UUID> snapshotIds, UUID projectId) {
         if (snapshotIds == null || snapshotIds.isEmpty()) {
             return null;
         }
@@ -24,12 +34,19 @@ final class SnapshotBoundRetrievalFilter {
         if (snapshotOp == null) {
             return null;
         }
-        RagExecutionContext ctx = RagExecutionContextHolder.get();
-        if (ctx != null && ctx.restrictsByProject() && ctx.projectId() != null && !ctx.projectId().isBlank()) {
-            FilterExpressionBuilder.Op projectOp = b.eq("projectId", ctx.projectId().trim());
+        if (projectId != null) {
+            FilterExpressionBuilder.Op projectOp = b.eq("projectId", projectId.toString());
             return b.and(snapshotOp, projectOp).build();
         }
         return snapshotOp.build();
+    }
+
+    private static UUID parseUuid(String raw) {
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private static FilterExpressionBuilder.Op snapshotFilter(FilterExpressionBuilder b, List<UUID> snapshotIds) {

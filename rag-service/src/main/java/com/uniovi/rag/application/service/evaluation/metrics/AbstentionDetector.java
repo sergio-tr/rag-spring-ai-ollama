@@ -5,6 +5,7 @@ import java.text.Normalizer;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /** Deterministic abstention detection from runtime metadata and normalized answer text. */
 public final class AbstentionDetector {
@@ -29,6 +30,20 @@ public final class AbstentionDetector {
                     "no consta en las fuentes",
                     "informacion suficiente",
                     "información suficiente");
+
+    private static final List<Pattern> EXTENDED_PATTERNS =
+            List.of(
+                    Pattern.compile("no puedo (proporcionar|encontrar|responder|determinar|confirmar|indicar|detallar|precisar|acceder)"),
+                    Pattern.compile("no (encuentro|dispongo|tengo|cuento) (con )?(informacion|acceso|datos|constancia|contexto)"),
+                    Pattern.compile("no hay informacion"),
+                    Pattern.compile("no es posible (determinar|responder|proporcionar|saber|confirmar)"),
+                    Pattern.compile("no aparece en (el|los|la|las)? ?(contexto|documento|acta|actas|fuentes)"),
+                    Pattern.compile("no figura en"),
+                    Pattern.compile("i (cannot|can't|couldn't|could not|don't|do not|didn't) (find|provide|know|answer|determine|access)"),
+                    Pattern.compile("i don'?t have (access|enough|sufficient)"),
+                    Pattern.compile("no information (is )?available"),
+                    Pattern.compile("not (mentioned|found|available|stated|specified) in the (context|provided|document|sources)"),
+                    Pattern.compile("unable to (find|provide|determine|answer)"));
 
     private AbstentionDetector() {}
 
@@ -58,6 +73,11 @@ public final class AbstentionDetector {
         for (String phrase : PHRASE_PATTERNS) {
             if (!phrase.isBlank() && normalized.contains(phrase)) {
                 return new Result(true, "phrase_match", "ANSWER_TEXT");
+            }
+        }
+        for (Pattern pattern : EXTENDED_PATTERNS) {
+            if (pattern.matcher(normalized).find()) {
+                return new Result(true, "phrase_match_extended", "ANSWER_TEXT_PATTERN");
             }
         }
         return new Result(false, "", "NONE");

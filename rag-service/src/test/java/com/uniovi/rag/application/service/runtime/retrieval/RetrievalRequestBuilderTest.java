@@ -147,6 +147,62 @@ class RetrievalRequestBuilderTest {
         assertThatThrownBy(() -> builder.build(ctx, plan)).isInstanceOf(IllegalStateException.class);
     }
 
+    @Test
+    void build_usesResolvedTopKForAllRuntimeCaps() {
+        RagConfig rag = baseRag(8, MaterializationStrategy.CHUNK_LEVEL, true);
+        ResolvedRuntimeConfig resolved =
+                new ResolvedRuntimeConfig(
+                        rag,
+                        CapabilitySet.fromRagConfig(rag),
+                        CompatibilityResult.ok(),
+                        ReindexImpact.none(),
+                        new SystemPromptLayers("", "", "", ""),
+                        "sys",
+                        new ConfigProvenance(null, null, null, List.of(), null, null),
+                        rag);
+        UUID sid = UUID.randomUUID();
+        ExecutionContext ctx =
+                new ExecutionContext(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "u",
+                        RuntimeOperationKind.CHAT_MESSAGE,
+                        resolved,
+                        "sys",
+                        new KnowledgeSnapshotSelection(
+                                List.of(sid), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()),
+                        Optional.empty(),
+                        Optional.empty(),
+                        "c",
+                        List.of("all"),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        "u",
+                        "u",
+                        Optional.empty(),
+                        ConversationMemoryOutcome.DISABLED_BY_CONFIG,
+                        List.of(),
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        Optional.empty(),
+                        Optional.empty());
+
+        var req = builder.build(ctx, minimalPlan("raw", "rewritten"));
+
+        assertThat(req.topKDense()).isEqualTo(8);
+        assertThat(req.topKSparse()).isEqualTo(8);
+        assertThat(req.postFusionCap()).isEqualTo(8);
+        assertThat(req.fusionOutputCap()).isEqualTo(16);
+    }
+
     private static RagConfig baseRag(int topK, MaterializationStrategy strat, boolean useRetrieval) {
         return new RagConfig(
                 false,

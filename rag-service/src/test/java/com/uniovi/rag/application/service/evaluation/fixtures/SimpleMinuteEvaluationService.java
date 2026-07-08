@@ -62,7 +62,7 @@ public final class SimpleMinuteEvaluationService extends AbstractMinuteEvaluatio
         super(featureConfig, implementationProperties, chatClient, documentService, queryService, cleanBeforeLoad);
     }
 
-    /** Test fixture only — not part of {@link com.uniovi.rag.application.service.evaluation.EvaluationService}. */
+    /** Test fixture only - not part of {@link com.uniovi.rag.application.service.evaluation.EvaluationService}. */
     public Map<String, String> fixtureQuestionsAndAnswers() {
         Map<String, String> qa = new HashMap<>(QA1);
         qa.putAll(QA2);

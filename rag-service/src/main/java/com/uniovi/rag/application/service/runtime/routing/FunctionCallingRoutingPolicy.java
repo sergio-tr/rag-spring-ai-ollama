@@ -1,5 +1,7 @@
 package com.uniovi.rag.application.service.runtime.routing;
 
+import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceEvaluator;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
@@ -18,12 +20,23 @@ public class FunctionCallingRoutingPolicy {
         List<String> reasons = new ArrayList<>();
         AdaptiveRouteKind workflowFallback = compatibilityWorkflowRoute(rag);
 
+        if (ActaFieldAnchorHeuristics.isExplicitActaFilenameFieldExtractionQuery(plan)) {
+            reasons.add("explicit_acta_filename_field_query");
+            return disabled(workflowFallback, reasons);
+        }
+
         if (!rag.functionCallingEnabled()) {
             reasons.add("functionCallingEnabled=false");
             return disabled(workflowFallback, reasons);
         }
         if (rag.adaptiveRoutingEnabled()) {
             reasons.add("adaptiveRoutingEnabled=true");
+            return disabled(workflowFallback, reasons);
+        }
+
+        DeterministicToolEvidenceEvaluator.Evaluation evaluation = DeterministicToolEvidenceEvaluator.evaluate(plan);
+        if (!evaluation.toolApplicabilityEligible() || evaluation.matchedKinds().isEmpty()) {
+            reasons.add("function_calling_not_applicable");
             return disabled(workflowFallback, reasons);
         }
 

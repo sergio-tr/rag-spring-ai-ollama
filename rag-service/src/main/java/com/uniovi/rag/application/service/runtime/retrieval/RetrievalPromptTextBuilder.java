@@ -27,7 +27,7 @@ public class RetrievalPromptTextBuilder {
     public RetrievalPromptTextBuilder(
             PgVectorStore vectorStore,
             ChatClient chatClient,
-            @Value("${spring.ai.ollama.top-k:10}") int defaultTopK,
+            @Value("${spring.ai.ollama.top-k:8}") int defaultTopK,
             @Value("${spring.ai.ollama.similarity-threshold:0.7}") double defaultSimilarityThreshold,
             @Value("${knowledge.v2.chat-overlay.enabled:false}") boolean knowledgeChatOverlayEnabled) {
         this.groupingHelper = new RetrievalChunkGroupingHelper(vectorStore, chatClient, defaultTopK, defaultSimilarityThreshold);
@@ -35,6 +35,11 @@ public class RetrievalPromptTextBuilder {
     }
 
     public String build(List<RetrievalCandidate> candidates, String query, RetrievalLayout layout) {
+        return build(candidates, query, layout, false);
+    }
+
+    public String build(
+            List<RetrievalCandidate> candidates, String query, RetrievalLayout layout, boolean metadataRich) {
         if (candidates.isEmpty()) {
             return "";
         }
@@ -48,7 +53,7 @@ public class RetrievalPromptTextBuilder {
         }
         StringBuilder sb = new StringBuilder();
         for (Document d : docs) {
-            String block = formatter.filterDocumentContent(d, query, null);
+            String block = formatter.buildBlock(d, metadataRich);
             if (block == null || block.isBlank()) {
                 continue;
             }
@@ -71,10 +76,14 @@ public class RetrievalPromptTextBuilder {
             super(vectorStore, chatClient, topK, similarityThreshold, knowledgeChatOverlayEnabled);
         }
 
+        String buildBlock(Document doc, boolean metadataRich) {
+            String content = doc.getText() != null ? doc.getText() : "";
+            return buildContentWithOptionalMetadataPrefix(doc, content, metadataRich);
+        }
+
         @Override
         public String filterDocumentContent(Document doc, String query, JSONObject entities) {
-            String content = doc.getText() != null ? doc.getText() : "";
-            return buildContentWithOptionalMetadataPrefix(doc, content);
+            return buildBlock(doc, false);
         }
     }
 }

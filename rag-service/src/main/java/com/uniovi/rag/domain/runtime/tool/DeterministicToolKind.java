@@ -14,7 +14,8 @@ public enum DeterministicToolKind {
     COUNT_AND_EXPLAIN_TOOL,
     GET_DURATION_TOOL,
     FILTER_AND_LIST_TOOL,
-    SUMMARIZE_MEETING_TOOL;
+    SUMMARIZE_MEETING_TOOL,
+    COMPARE_TOOL;
 
     /**
      * Canonical {@link QueryType} used by {@link com.uniovi.rag.configuration.ToolDescriptor} for tool name and description.
@@ -29,6 +30,7 @@ public enum DeterministicToolKind {
             case GET_DURATION_TOOL -> QueryType.GET_DURATION;
             case FILTER_AND_LIST_TOOL -> QueryType.FILTER_AND_LIST;
             case SUMMARIZE_MEETING_TOOL -> QueryType.SUMMARIZE_MEETING;
+            case COMPARE_TOOL -> QueryType.COMPARE;
         };
     }
 }

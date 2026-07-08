@@ -173,7 +173,7 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           npm run build
-      - run: npx playwright install --with-deps chromium
+      - uses: ./.github/actions/install-playwright-chromium
       - name: Run Playwright (excludes @fullstack)
         run: npm run test:e2e:ci-fast
         env:
@@ -236,7 +236,7 @@ jobs:
       INTEGRATION_FAIL_ON_UNREACHABLE: "1"
       INTEGRATION_LOGIN_EMAIL: dev@local.test
       INTEGRATION_LOGIN_PASSWORD: dev
-      # Spring env wins over application-e2e.properties — force CI-friendly health when profile e2e runs without Ollama/classifier.
+      # Spring env wins over application-e2e.properties - force CI-friendly health when profile e2e runs without Ollama/classifier.
       RAG_LLM_DEFAULT_PROVIDER: OLLAMA_NATIVE
       RAG_LLM_OLLAMA_DEFAULT_EMBEDDING_MODEL: mxbai-embed-large:latest
       RAG_HEALTH_OLLAMA_ENABLED: "false"
@@ -564,6 +564,8 @@ jobs:
       NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
       # Admin UI smoke requires backend profile=e2e admin seeding.
       E2E_ADMIN_ENABLED: "1"
+      E2E_ADMIN_EMAIL: admin@e2e.local
+      E2E_ADMIN_PASSWORD: e2e
       REVERSE_PROXY_HTTP_PORT: "8080"
       REVERSE_PROXY_HTTPS_PORT: "8443"
       RAG_LLM_DEFAULT_PROVIDER: OLLAMA_NATIVE
@@ -681,9 +683,7 @@ jobs:
           docker logs rag-reverse-proxy-ci || true
           exit 1
 
-      - name: Install Playwright browsers
-        working-directory: webapp
-        run: npx playwright install --with-deps chromium
+      - uses: ./.github/actions/install-playwright-chromium
 
       - name: E2E stack preflight (curl + auth, fail-fast)
         working-directory: webapp
@@ -850,9 +850,7 @@ jobs:
       - name: Install webapp dependencies
         working-directory: webapp
         run: npm install --no-audit --no-fund
-      - name: Install Playwright browsers
-        working-directory: webapp
-        run: npx playwright install --with-deps chromium
+      - uses: ./.github/actions/install-playwright-chromium
       - name: Run Playwright API tests
         working-directory: webapp
         run: npm run test:api

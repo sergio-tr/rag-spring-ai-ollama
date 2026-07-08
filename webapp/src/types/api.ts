@@ -37,6 +37,30 @@ export type MeResponse = {
   emailVerifiedAt: string | null;
 };
 
+export type MeEffectiveLlmDefaultsResponse = {
+  effectiveProvider: "OPENAI_COMPATIBLE" | "OLLAMA_NATIVE";
+  chatModel: string;
+  classifierModelId: string | null;
+  temperature: number | null;
+  additionalParameters: Record<string, unknown>;
+};
+
+export type MeEffectiveRuntimeResponse = {
+  projectId: string;
+  conversationId: string;
+  effectiveConfig: Record<string, unknown>;
+  taskRoles: Array<Record<string, unknown>>;
+  classifierModelId: string | null;
+  snapshotEmbeddingModelId: string | null;
+  presetId: string | null;
+  effectivePresetId?: string | null;
+  presetName?: string | null;
+  presetSource?: string | null;
+  retrievalTopK: number | null;
+  retrievalSimilarityThreshold: number | null;
+  materializationStrategy: string | null;
+};
+
 export type ProjectIndexProfileSummary = {
   projectId: string;
   materializationStrategy: string | null;
@@ -128,7 +152,7 @@ export type EvaluationCorpusSummaryDto = {
   updatedAt: string;
 };
 
-/** GET /lab/evaluation-corpora/{id}/readiness — corpus + snapshot preflight for Lab benchmarks. */
+/** GET /lab/evaluation-corpora/{id}/readiness - corpus + snapshot preflight for Lab benchmarks. */
 export type EvaluationCorpusReadinessDto = {
   corpusId: string;
   indexProjectId: string | null;
@@ -173,7 +197,7 @@ export type ConversationDto = {
   classifierModelId?: string | null;
   /** Project document UUIDs limiting retrieval; empty = all documents in the project. */
   documentFilter?: string[];
-  /** Conversation-scoped runtime override keys (merged on top of preset + project config). */
+  /** Full custom conversation configuration snapshot (merged on PATCH). */
   runtimeOverride?: Record<string, unknown>;
   /** Populated when returned from POST create after validation preview; omitted or empty on list. */
   effectiveRuntimePreview?: Record<string, unknown>;
@@ -200,6 +224,13 @@ export type ChatRuntimeValidationDto = {
   warnings: RuntimeConfigValidationIssueDto[];
 };
 
+export type EffectiveRetrievalParametersDto = {
+  topK: number;
+  similarityThreshold: number;
+  topKSource: string;
+  similarityThresholdSource: string;
+};
+
 export type ChatRuntimeStateDto = {
   conversationId: string;
   selectedPresetId: string | null;
@@ -210,6 +241,8 @@ export type ChatRuntimeStateDto = {
   conversationLlmModel: string | null;
   conversationClassifierModelId: string | null;
   conversationModelsPinned: boolean;
+  configurationMode: "PRESET" | "CUSTOM";
+  /** Full custom conversation configuration snapshot when mode is CUSTOM. */
   runtimeOverride: Record<string, unknown>;
   manualOverrideKeys: string[];
   isCustom: boolean;
@@ -224,6 +257,7 @@ export type ChatRuntimeStateDto = {
   runtimeCompatibility?: RuntimeCompatibilityDto | null;
   disabledRuntimeFeatures?: DisabledRuntimeFeatureDto[];
   disabledPresetReason?: string | null;
+  effectiveRetrievalParameters?: EffectiveRetrievalParametersDto | null;
 };
 
 export type DisabledRuntimeFeatureDto = {
@@ -257,6 +291,35 @@ export type RagPresetDto = {
   system: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+export type CompatibleProductPresetDto = {
+  preset: RagPresetDto;
+  indexRequirements: RuntimeIndexCompatibilityDto["presetIndexRequirements"];
+  compatibility: PresetCompatibilityDto;
+};
+
+export type CompatibleExperimentalPresetDto = {
+  preset: ExperimentalPresetCatalogItemDto;
+  compatibility: PresetCompatibilityDto;
+};
+
+export type RuntimeSnapshotCapabilitiesDto = {
+  materializationStrategy: string | null;
+  supportsMetadata: boolean | null;
+  embeddingModelId: string | null;
+  chunkMaxChars: number | null;
+  chunkOverlap: number | null;
+};
+
+export type ProjectCompatiblePresetsDto = {
+  projectId: string;
+  effectiveEmbeddingModelId: string | null;
+  hasActiveIndex: boolean;
+  readyDocumentCount: number;
+  activeSnapshotCapabilities: RuntimeSnapshotCapabilitiesDto | null;
+  productPresets: CompatibleProductPresetDto[];
+  experimentalPresets: CompatibleExperimentalPresetDto[];
 };
 
 export type AdminAllowlistEntryDto = {
@@ -384,7 +447,7 @@ export type ActiveLabJobDto = {
   cancellable: boolean;
 };
 
-/** GET /lab/benchmarks/{kind}/runs/latest — Lab recovery when no active job. */
+/** GET /lab/benchmarks/{kind}/runs/latest - Lab recovery when no active job. */
 export type LatestLabRunRecoveryDto = {
   evaluationRunId: string;
   jobId: string | null;
@@ -501,6 +564,8 @@ export type StartBenchmarkRunRequest = {
   /** RAG preset LAB: seed evaluation corpus from server classpath acta bundle when needed. */
   bootstrapCorpusFromClasspathDocs?: boolean | null;
   bootstrapSkipExisting?: boolean | null;
+  /** Optional runtime overrides sent with the benchmark request (temperature, topK, etc.). */
+  benchmarkRuntimeParameters?: Record<string, unknown> | null;
 };
 
 export type ExperimentalPresetCatalogItemDto = {
@@ -534,7 +599,7 @@ export type ExperimentalPresetCatalogItemDto = {
   requiresSnapshot?: boolean;
   requiresProjectDocuments?: boolean;
   singleTurnBenchmarkSelectable?: boolean;
-  /** P0=0 … P14=14 */
+  /** P0=0 … P15=15 */
   protocolStageIndex?: number;
   parentPresetCode?: string | null;
   /** Canonical terminal runtime JSON (Lab + Chat overlay). */
@@ -595,13 +660,7 @@ export type RuntimeIndexCompatibilityDto = {
   activeIndexProfileHash: string | null;
   activeIndexProfile: Record<string, unknown>;
   hasActiveIndex: boolean;
-  activeSnapshotCapabilities?: {
-    materializationStrategy: string | null;
-    supportsMetadata: boolean | null;
-    embeddingModelId: string | null;
-    chunkMaxChars: number | null;
-    chunkOverlap: number | null;
-  } | null;
+  activeSnapshotCapabilities?: RuntimeSnapshotCapabilitiesDto | null;
   presetIndexRequirements?: {
     requiredMaterializationStrategy: string | null;
     requiresMetadataSupport: boolean;
@@ -789,7 +848,7 @@ export type PatchConversationBody = {
   classifierModelId?: string | null;
 };
 
-/** GET `{product}/models` — allowlist vs Ollama tags. */
+/** GET `{product}/models` - allowlist vs Ollama tags. */
 export type ModelsCatalogAllowlistEntry = {
   name: string;
   type: "LLM" | "EMBEDDING";
@@ -803,7 +862,7 @@ export type ModelsCatalogResponse = {
   allowlist: ModelsCatalogAllowlistEntry[];
 };
 
-/** GET `{product}/models?type=LLM|EMBEDDING` — filtered selectable models. */
+/** GET `{product}/models?type=LLM|EMBEDDING` - filtered selectable models. */
 export type SelectableModelDto = {
   modelId: string;
   displayName: string | null;
@@ -813,7 +872,111 @@ export type SelectableModelDto = {
   lastCheckedAt: string | null;
 };
 
-/** GET `{product}/model-registry` — curated demo LLM/embedding targets + Ollama presence (no allowlist writes). */
+/** GET `{product}/me/llm/selectable-models` - user-scoped chat models from properties catalog. */
+export type LlmCatalogRuntimeStatus =
+  | "UNKNOWN"
+  | "CONFIGURED"
+  | "NOT_PROBED"
+  | "AVAILABLE"
+  | "UNAVAILABLE"
+  | "PROBE_FAILED";
+
+export type LlmProvider = "OLLAMA_NATIVE" | "OPENAI_COMPATIBLE";
+
+export type MeSelectableLlmModelDto = {
+  modelName: string;
+  displayName: string;
+  selectable: boolean;
+  disabledReason: string | null;
+  disabledReasonCode: string | null;
+  usableAsDefault: boolean;
+  runtimeStatus: LlmCatalogRuntimeStatus;
+};
+
+export type MeSelectableLlmModelsResponse = {
+  effectiveProvider: LlmProvider;
+  capability: "CHAT" | "EMBEDDING";
+  models: MeSelectableLlmModelDto[];
+};
+
+/** GET `{product}/llm/catalog` - properties-backed model catalog with optional runtime status. */
+export type LlmCatalogSource =
+  | "PROPERTIES"
+  | "CONFIGURED_CATALOG"
+  | "LITELLM_CONFIGURED"
+  | "OLLAMA_LIVE"
+  | "UNKNOWN";
+
+export type LlmModelCapability = "CHAT" | "EMBEDDING";
+
+export type LlmCatalogModelDto = {
+  provider: LlmProvider;
+  modelName: string;
+  displayName?: string | null;
+  capability: LlmModelCapability;
+  configured?: boolean;
+  available: boolean;
+  selectableByUser: boolean;
+  usableAsDefault: boolean;
+  runtimeStatus: LlmCatalogRuntimeStatus;
+  runtimeDetail: string | null;
+  embeddingDimensions: number | null;
+  compatibleWithCurrentVectorStore: boolean | null;
+  source: LlmCatalogSource;
+  governanceAllowed?: boolean | null;
+};
+
+export type LlmCatalogResponse = {
+  models: LlmCatalogModelDto[];
+};
+
+/** GET `{product}/lab/evaluation-models` - Lab evaluation model picker from properties catalog. */
+export type LabEvaluationModelDto = {
+  modelName: string;
+  evalSelectable: boolean;
+  blockedReason: string | null;
+  blockedReasonCode: string | null;
+  runtimeStatus: LlmCatalogRuntimeStatus;
+  embeddingDimensions: number | null;
+  compatibleWithCurrentVectorStore: boolean | null;
+  usableAsDefault: boolean;
+  supportsEncodingFormat?: boolean;
+  supportedEncodingFormats?: string[];
+  supportsDimensions?: boolean;
+  defaultDimensions?: number | null;
+  maxInputTokens?: number | null;
+  supportsNormalize?: boolean;
+  supportsTruncate?: boolean;
+};
+
+export type MeEffectiveEmbeddingDefaultsResponse = {
+  effectiveProvider: LlmProvider;
+  embeddingModel: string;
+  embeddingOptions: {
+    encodingFormat?: string | null;
+    dimensions?: number | null;
+    user?: string | null;
+    timeoutSeconds?: number | null;
+  };
+  retrievalOptions: {
+    topK?: number | null;
+    similarityThreshold?: number | null;
+    materializationStrategy?: string | null;
+  };
+  indexingOptions: {
+    batchSize?: number | null;
+    maxInputChars?: number | null;
+    normalize?: boolean | null;
+    truncate?: string | null;
+  };
+};
+
+export type LabEvaluationModelsResponse = {
+  effectiveProvider: LlmProvider;
+  capability: LlmModelCapability;
+  models: LabEvaluationModelDto[];
+  hasCompatibleEmbeddingModels: boolean;
+};
 export type ModelRegistryAvailabilityStatus = "AVAILABLE" | "MISSING" | "ERROR";
 
 export type ModelRegistryItemDto = {
@@ -838,7 +1001,7 @@ export type ModelRegistryCheckRequest = {
   probeEmbedding?: boolean | null;
 };
 
-/** POST `{product}/model-registry/pull` — only curated ids; returns lab job envelope. */
+/** POST `{product}/model-registry/pull` - only curated ids; returns lab job envelope. */
 export type ModelRegistryPullRequest = {
   modelId: string;
 };
@@ -861,7 +1024,7 @@ export type ActivateClassifierModelBody = {
   projectId: string;
 };
 
-/** GET `{product}/lab/dataset-templates/{kind}` — Excel template for Lab uploads. */
+/** GET `{product}/lab/dataset-templates/{kind}` - Excel template for Lab uploads. */
 export type ExperimentalDatasetTemplateKind =
   | "llm-model-baseline"
   | "embedding-baseline"
@@ -925,7 +1088,7 @@ export type ExperimentalDatasetListItemDto = {
   description: string | null;
 };
 
-/** GET `{product}/lab/runs/{runId}/items` — one evaluated row. */
+/** GET `{product}/lab/runs/{runId}/items` - one evaluated row. */
 export type EvaluationResultItemDto = {
   id: string;
   questionText: string;

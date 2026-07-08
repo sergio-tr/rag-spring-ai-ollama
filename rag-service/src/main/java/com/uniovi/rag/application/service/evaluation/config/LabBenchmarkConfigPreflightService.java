@@ -1,18 +1,22 @@
 package com.uniovi.rag.application.service.evaluation.config;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.uniovi.rag.application.service.embedding.EmbeddingOptionsValidator;
 import com.uniovi.rag.application.service.evaluation.StartBenchmarkRunRequest;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
+import com.uniovi.rag.application.service.llm.catalog.EvaluationModelCatalogService;
 import com.uniovi.rag.application.service.evaluation.preset.CorpusAvailabilityGate;
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetBenchmarkGate;
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
 import com.uniovi.rag.application.service.evaluation.preset.LabIndexSnapshotCompatibilityService;
 import com.uniovi.rag.application.service.evaluation.preset.LabPresetRunGroupKey;
 import com.uniovi.rag.application.service.evaluation.preset.LabPresetRunPlanService;
+import com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.application.service.knowledge.LabIndexProfileOverrideFactory;
 import com.uniovi.rag.application.service.knowledge.ProjectIndexProfileService;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.application.service.runtime.config.IndexCompatibilityResult;
 import com.uniovi.rag.application.service.runtime.config.IndexSnapshotCapabilities;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
@@ -25,6 +29,7 @@ import com.uniovi.rag.infrastructure.vector.EmbeddingSpaceGuard;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -47,6 +52,10 @@ public class LabBenchmarkConfigPreflightService {
     private final ProjectIndexProfileService projectIndexProfileService;
     private final LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
     private final CorpusAvailabilityGate corpusAvailabilityGate;
+    private final EvaluationModelCatalogService evaluationModelCatalogService;
+    private final EmbeddingOptionsValidator embeddingOptionsValidator;
+    private final KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
+    private final KnowledgeIndexSnapshotProfileAccess snapshotProfileAccess;
 
     public LabBenchmarkConfigPreflightService(
             RagFeatureConfiguration ragFeatureConfiguration,
@@ -56,7 +65,11 @@ public class LabBenchmarkConfigPreflightService {
             EvaluationCorpusApplicationService evaluationCorpusApplicationService,
             ProjectIndexProfileService projectIndexProfileService,
             LabIndexProfileOverrideFactory labIndexProfileOverrideFactory,
-            CorpusAvailabilityGate corpusAvailabilityGate) {
+            CorpusAvailabilityGate corpusAvailabilityGate,
+            EvaluationModelCatalogService evaluationModelCatalogService,
+            EmbeddingOptionsValidator embeddingOptionsValidator,
+            KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository,
+            KnowledgeIndexSnapshotProfileAccess snapshotProfileAccess) {
         this.ragFeatureConfiguration = ragFeatureConfiguration;
         this.knowledgeSnapshotService = knowledgeSnapshotService;
         this.embeddingSpaceGuard = embeddingSpaceGuard;
@@ -65,6 +78,10 @@ public class LabBenchmarkConfigPreflightService {
         this.projectIndexProfileService = projectIndexProfileService;
         this.labIndexProfileOverrideFactory = labIndexProfileOverrideFactory;
         this.corpusAvailabilityGate = corpusAvailabilityGate;
+        this.evaluationModelCatalogService = evaluationModelCatalogService;
+        this.embeddingOptionsValidator = embeddingOptionsValidator;
+        this.knowledgeIndexSnapshotRepository = knowledgeIndexSnapshotRepository;
+        this.snapshotProfileAccess = snapshotProfileAccess;
     }
 
     /**
@@ -78,7 +95,7 @@ public class LabBenchmarkConfigPreflightService {
         }
         return switch (kind) {
             case RAG_PRESET_END_TO_END -> validateRag(userId, request);
-            case EMBEDDING_RETRIEVAL -> validateEmbedding(request);
+            case EMBEDDING_RETRIEVAL -> validateEmbedding(userId, request);
             default -> okSummary(List.of(), null, request.autoReindexEffective(), false, Map.of());
         };
     }
@@ -117,16 +134,34 @@ public class LabBenchmarkConfigPreflightService {
         if (request.corpusId() != null && strictIndexCheck) {
             if (request.autoReindexEffective()) {
                 details.put("indexPreflight", "DEFERRED_AUTO_REINDEX");
+            } else if (request.indexSnapshotId() != null) {
+                validateExplicitSnapshotForPresets(
+                        userId, request.corpusId(), request.indexSnapshotId(), presets, request, details);
             } else {
-                validateIndexForPresets(userId, request.corpusId(), presets, details);
+                validateIndexForPresets(userId, request.corpusId(), presets, request, details);
             }
         }
 
         validateP1CorpusSnapshotCompatibility(userId, request, presets, details);
 
+        boolean needsEmbedding = presets.stream().anyMatch(ExperimentalPresetCanonicalCatalog::embeddingRequired);
+        if (needsEmbedding) {
+            evaluationModelCatalogService.assertHasCompatibleEmbeddingWhenRequired(userId);
+        }
+
+        String llmModelId = request.llmModelId() != null && !request.llmModelId().isBlank()
+                ? request.llmModelId().trim()
+                : null;
+        if (llmModelId != null) {
+            evaluationModelCatalogService.assertChatModelInCatalog(userId, llmModelId);
+            details.put("llmModelId", llmModelId);
+        }
+
         String embeddingModelId = resolveEmbeddingModelId(request);
         if (embeddingModelId != null && presets.stream().anyMatch(ExperimentalPresetCanonicalCatalog::embeddingRequired)) {
-            assertEmbeddingDimension(embeddingModelId);
+            evaluationModelCatalogService.assertEmbeddingCompatibleWithVectorStore(userId, embeddingModelId);
+            embeddingOptionsValidator.validateRuntimeParameters(
+                    userId, embeddingModelId, request.benchmarkRuntimeParameters());
             details.put("embeddingModelId", embeddingModelId);
         }
 
@@ -138,13 +173,16 @@ public class LabBenchmarkConfigPreflightService {
                 details);
     }
 
-    private LabBenchmarkConfigPreflightResult validateEmbedding(StartBenchmarkRunRequest request) {
+    private LabBenchmarkConfigPreflightResult validateEmbedding(UUID userId, StartBenchmarkRunRequest request) {
+        evaluationModelCatalogService.assertHasCompatibleEmbeddingWhenRequired(userId);
         List<String> embeddingModelIds = resolveEmbeddingModelIds(request);
         if (embeddingModelIds.isEmpty()) {
             return okSummary(List.of(), null, request.autoReindexEffective(), false, Map.of());
         }
         for (String embeddingModelId : embeddingModelIds) {
-            assertEmbeddingDimension(embeddingModelId);
+            evaluationModelCatalogService.assertEmbeddingCompatibleWithVectorStore(userId, embeddingModelId);
+            embeddingOptionsValidator.validateRuntimeParameters(
+                    userId, embeddingModelId, request.benchmarkRuntimeParameters());
         }
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("embeddingModelIds", embeddingModelIds);
@@ -219,39 +257,29 @@ public class LabBenchmarkConfigPreflightService {
         return LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_REINDEX;
     }
 
-    private void validateIndexForPresets(
+    private void validateExplicitSnapshotForPresets(
             UUID userId,
             UUID corpusId,
+            UUID indexSnapshotId,
             List<RagExperimentalPresetCode> presets,
+            StartBenchmarkRunRequest request,
             Map<String, Object> details) {
+        KnowledgeIndexSnapshotEntity explicit =
+                knowledgeIndexSnapshotRepository.findById(indexSnapshotId).orElse(null);
+        if (explicit == null || explicit.getId() == null) {
+            fail(HttpStatus.BAD_REQUEST, LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_INDEX);
+        }
+        details.put("explicitIndexSnapshotId", indexSnapshotId.toString());
         RagExperimentalPresetCode strictest =
                 presets.stream().max(Comparator.comparingInt(Enum::ordinal)).orElseThrow();
-
-        if (!ExperimentalPresetCanonicalCatalog.requiresSnapshotForExecution(strictest)) {
-            return;
-        }
-
-        Optional<KnowledgeIndexSnapshotEntity> active = knowledgeSnapshotService.findActiveCorpusSnapshot(corpusId);
-        boolean hasActive = active.isPresent();
-        UUID activeId = active.map(KnowledgeIndexSnapshotEntity::getId).orElse(null);
-        details.put("activeSnapshotId", activeId != null ? activeId.toString() : null);
-        details.put("strictestPreset", strictest.name());
-
-        IndexSnapshotCapabilities caps =
-                active.map(KnowledgeIndexSnapshotEntity::getIndexProfileJsonb)
-                        .map(IndexSnapshotCapabilities::fromIndexProfile)
-                        .orElse(IndexSnapshotCapabilities.fromIndexProfile(Map.of()));
-
-        ExperimentalPresetCanonicalCatalog.IndexRequirements req =
-                ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(strictest);
-        IndexCompatibilityResult idx = IndexCompatibilityResult.check(req, hasActive, caps);
-
-        if (!idx.compatible()) {
-            String mapped = mapIndexCompatibilityToConfigCode(idx);
-            fail(HttpStatus.BAD_REQUEST, mapped);
-        }
-
-        validateActiveSnapshotReuseEligibility(userId, corpusId, strictest, active.orElse(null), details);
+        validateActiveSnapshotReuseEligibility(
+                userId,
+                corpusId,
+                strictest,
+                explicit,
+                resolveEmbeddingModelId(request),
+                details);
+        details.put("indexPreflight", "EXPLICIT_SNAPSHOT_COMPATIBLE");
     }
 
     private void validateActiveSnapshotReuseEligibility(
@@ -259,6 +287,7 @@ public class LabBenchmarkConfigPreflightService {
             UUID corpusId,
             RagExperimentalPresetCode strictest,
             KnowledgeIndexSnapshotEntity active,
+            String embeddingModelIdOverride,
             Map<String, Object> details) {
         if (active == null || active.getId() == null) {
             fail(HttpStatus.BAD_REQUEST, LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_INDEX);
@@ -270,11 +299,18 @@ public class LabBenchmarkConfigPreflightService {
             fail(HttpStatus.BAD_REQUEST, LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_INDEX);
             return;
         }
+        if (context == null) {
+            fail(HttpStatus.BAD_REQUEST, LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_INDEX);
+            return;
+        }
         UUID indexProjectId = context.indexProjectId();
         LabPresetRunGroupKey groupKey = LabPresetRunPlanService.groupKeyFor(strictest);
         ExperimentalPresetCanonicalCatalog.IndexRequirements requirements =
                 ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(strictest);
         ProjectIndexProfile base = projectIndexProfileService.ensureDefault(indexProjectId);
+        if (embeddingModelIdOverride != null && !embeddingModelIdOverride.isBlank()) {
+            base = labIndexProfileOverrideFactory.withEmbeddingModelId(base, embeddingModelIdOverride);
+        }
         ProjectIndexProfile effective =
                 labIndexProfileOverrideFactory.buildEffectiveProfile(base, requirements, groupKey);
         LabIndexSnapshotCompatibilityService.ReuseEligibility eligibility =
@@ -284,7 +320,7 @@ public class LabBenchmarkConfigPreflightService {
                         indexProjectId,
                         active,
                         requirements,
-                        null,
+                        embeddingModelIdOverride,
                         effective,
                         groupKey,
                         indexSnapshotCompatibilityService.requiresSnapshotBoundVectorRows(strictest));
@@ -292,6 +328,166 @@ public class LabBenchmarkConfigPreflightService {
         if (!eligibility.eligible()) {
             fail(HttpStatus.BAD_REQUEST, mapReuseBlockerToConfigCode(eligibility.reasonCode()));
         }
+    }
+
+    private void validateIndexForPresets(
+            UUID userId,
+            UUID corpusId,
+            List<RagExperimentalPresetCode> presets,
+            StartBenchmarkRunRequest request,
+            Map<String, Object> details) {
+        List<RagExperimentalPresetCode> snapshotPresets =
+                presets.stream().filter(ExperimentalPresetCanonicalCatalog::requiresSnapshotForExecution).toList();
+        if (snapshotPresets.isEmpty()) {
+            return;
+        }
+
+        Optional<KnowledgeIndexSnapshotEntity> active = knowledgeSnapshotService.findActiveCorpusSnapshot(corpusId);
+        UUID activeId = active.map(KnowledgeIndexSnapshotEntity::getId).orElse(null);
+        details.put("activeSnapshotId", activeId != null ? activeId.toString() : null);
+        RagExperimentalPresetCode strictest =
+                snapshotPresets.stream().max(Comparator.comparingInt(Enum::ordinal)).orElseThrow();
+        details.put("strictestPreset", strictest.name());
+
+        String embeddingModelId = resolveEmbeddingModelId(request);
+        if (embeddingModelId != null) {
+            details.put("indexPreflightEmbeddingModelId", embeddingModelId);
+        }
+
+        LinkedHashMap<String, Object> groupPreflight = new LinkedHashMap<>();
+        LinkedHashSet<LabPresetRunGroupKey> groupKeys = new LinkedHashSet<>();
+        for (RagExperimentalPresetCode preset : snapshotPresets) {
+            groupKeys.add(LabPresetRunPlanService.groupKeyFor(preset));
+        }
+        boolean allGroupsEligible = true;
+        for (LabPresetRunGroupKey groupKey : groupKeys) {
+            RagExperimentalPresetCode representative =
+                    snapshotPresets.stream()
+                            .filter(p -> LabPresetRunPlanService.groupKeyFor(p) == groupKey)
+                            .max(Comparator.comparingInt(Enum::ordinal))
+                            .orElseThrow();
+            Map<String, Object> groupDetails = new LinkedHashMap<>();
+            boolean eligible =
+                    validatePresetGroupSnapshotReuse(
+                            userId, corpusId, representative, groupKey, embeddingModelId, groupDetails);
+            groupPreflight.put(groupKey.name(), groupDetails);
+            allGroupsEligible = allGroupsEligible && eligible;
+        }
+        details.put("presetGroupIndexPreflight", groupPreflight);
+        details.put("activeSnapshotReuseEligible", allGroupsEligible);
+    }
+
+    /**
+     * Validates reuse for the corpus snapshot that matches the preset run group (e.g. CHUNK_LEVEL for P3), not only the
+     * corpus-active snapshot (which may be HYBRID for P8/P10).
+     */
+    private boolean validatePresetGroupSnapshotReuse(
+            UUID userId,
+            UUID corpusId,
+            RagExperimentalPresetCode preset,
+            LabPresetRunGroupKey groupKey,
+            String embeddingModelIdOverride,
+            Map<String, Object> groupDetails) {
+        groupDetails.put("presetCode", preset.name());
+        groupDetails.put("groupKey", groupKey.name());
+
+        EvaluationCorpusApplicationService.EvaluationCorpusContext context;
+        try {
+            context = evaluationCorpusApplicationService.requireContext(userId, corpusId);
+        } catch (Exception ex) {
+            fail(HttpStatus.BAD_REQUEST, LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_INDEX);
+            return false;
+        }
+        if (context == null) {
+            fail(HttpStatus.BAD_REQUEST, LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_INDEX);
+            return false;
+        }
+        UUID indexProjectId = context.indexProjectId();
+        ExperimentalPresetCanonicalCatalog.IndexRequirements requirements =
+                ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(preset);
+        ProjectIndexProfile base = projectIndexProfileService.ensureDefault(indexProjectId);
+        if (embeddingModelIdOverride != null && !embeddingModelIdOverride.isBlank()) {
+            base = labIndexProfileOverrideFactory.withEmbeddingModelId(base, embeddingModelIdOverride);
+        }
+        ProjectIndexProfile effective =
+                labIndexProfileOverrideFactory.buildEffectiveProfile(base, requirements, groupKey);
+
+        Optional<KnowledgeIndexSnapshotEntity> compatible =
+                findCorpusSnapshotForGroup(corpusId, requirements, groupKey, embeddingModelIdOverride);
+        if (compatible.isEmpty()) {
+            groupDetails.put("compatibleSnapshotId", null);
+            groupDetails.put("reuseEligible", false);
+            groupDetails.put("reasonCode", LabCorpusReasonCodes.NO_COMPATIBLE_SNAPSHOT);
+            boolean hasAnyCorpusSnapshot =
+                    knowledgeSnapshotService.findCorpusSnapshots(corpusId).stream().findAny().isPresent();
+            fail(
+                    HttpStatus.BAD_REQUEST,
+                    hasAnyCorpusSnapshot
+                            ? LabRuntimeConfigReasonCodes.SNAPSHOT_CONFIG_MISMATCH
+                            : LabRuntimeConfigReasonCodes.FEATURE_REQUIRES_INDEX);
+            return false;
+        }
+
+        KnowledgeIndexSnapshotEntity snapshot = compatible.get();
+        groupDetails.put("compatibleSnapshotId", snapshot.getId().toString());
+        IndexSnapshotCapabilities caps =
+                IndexSnapshotCapabilities.fromIndexProfile(snapshotProfileAccess.resolveProfileJsonb(snapshot));
+        groupDetails.put("materializationStrategy", caps.materializationStrategy());
+        groupDetails.put("embeddingModelId", caps.embeddingModelId());
+
+        LabIndexSnapshotCompatibilityService.ReuseEligibility eligibility =
+                indexSnapshotCompatibilityService.evaluateReuse(
+                        userId,
+                        corpusId,
+                        indexProjectId,
+                        snapshot,
+                        requirements,
+                        embeddingModelIdOverride,
+                        effective,
+                        groupKey,
+                        indexSnapshotCompatibilityService.requiresSnapshotBoundVectorRows(preset));
+        groupDetails.put("reuseEligible", eligibility.eligible());
+        if (eligibility.reasonCode() != null) {
+            groupDetails.put("reasonCode", eligibility.reasonCode());
+        }
+        if (!eligibility.eligible()) {
+            fail(HttpStatus.BAD_REQUEST, mapReuseBlockerToConfigCode(eligibility.reasonCode()));
+            return false;
+        }
+        return true;
+    }
+
+    private Optional<KnowledgeIndexSnapshotEntity> findCorpusSnapshotForGroup(
+            UUID corpusId,
+            ExperimentalPresetCanonicalCatalog.IndexRequirements requirements,
+            LabPresetRunGroupKey groupKey,
+            String embeddingModelIdOverride) {
+        String requiredMaterialization = requiredMaterializationForGroup(groupKey);
+        return knowledgeSnapshotService.findCorpusSnapshots(corpusId).stream()
+                .filter(
+                        snap ->
+                                indexSnapshotCompatibilityService.profileCompatible(
+                                        snap, requirements, embeddingModelIdOverride))
+                .filter(
+                        snap ->
+                                requiredMaterialization == null
+                                        || requiredMaterialization.equalsIgnoreCase(
+                                                IndexSnapshotCapabilities.fromIndexProfile(
+                                                                snapshotProfileAccess.resolveProfileJsonb(snap))
+                                                        .materializationStrategy()))
+                .findFirst();
+    }
+
+    private static String requiredMaterializationForGroup(LabPresetRunGroupKey groupKey) {
+        if (groupKey == null) {
+            return null;
+        }
+        return switch (groupKey) {
+            case DOCUMENT_LEVEL -> "DOCUMENT_LEVEL";
+            case CHUNK_LEVEL, CHUNK_LEVEL_METADATA -> "CHUNK_LEVEL";
+            case HYBRID_METADATA -> "HYBRID";
+            case DIRECT_LLM, NO_INDEX, MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN -> null;
+        };
     }
 
     private static String mapReuseBlockerToConfigCode(String reasonCode) {

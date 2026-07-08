@@ -213,7 +213,61 @@ class FinalAnswerSynthesizerTest {
     assertThat(out).contains("ACTA_2026-02-25.pdf");
   }
 
-  private static QueryPlan plan(String query, QueryType queryType) {
+    @Test
+    void enumerateAllWhenToolReturnsN() {
+        QueryPlan plan =
+                plan("¿Qué actas mencionan videovigilancia?", QueryType.FILTER_AND_LIST);
+        List<Map<String, Object>> sources =
+                List.of(
+                        Map.of("filename", "ACTA_1.pdf"),
+                        Map.of("filename", "ACTA_2.pdf"),
+                        Map.of("filename", "ACTA_3.pdf"));
+        String raw = "Una acta menciona videovigilancia.";
+
+        String out = FinalAnswerSynthesizer.synthesize(plan, raw, sources);
+
+        assertThat(out).contains("ACTA_1.pdf", "ACTA_2.pdf", "ACTA_3.pdf");
+        assertThat(out).contains("- ACTA_1.pdf");
+    }
+
+    @Test
+    void synthesize_replacesPrefixOnlyBasedWithGroundedFallback() {
+        QueryPlan plan = plan("en qué actas se habla sobre cámaras", QueryType.FILTER_AND_LIST);
+        List<Map<String, Object>> sources = List.of(Map.of("filename", "ACTA 1.pdf"));
+        String out = FinalAnswerSynthesizer.synthesize(plan, "Based", sources);
+        assertThat(out).contains("ACTA 1.pdf");
+        assertThat(out).doesNotContain("Based");
+    }
+
+    @Test
+    void apply_preservesSourcesWhenReplacingPrefixOnlyAnswer() {
+        QueryPlan plan = plan("en qué actas se habla sobre cámaras", QueryType.FILTER_AND_LIST);
+        List<Map<String, Object>> sources = List.of(Map.of("filename", "ACTA 1.pdf"));
+        RagExecutionResult terminal =
+                new RagExecutionResult(
+                        "Based",
+                        "ChunkDenseMetadataWorkflow",
+                        true,
+                        true,
+                        Optional.empty(),
+                        Optional.empty(),
+                        List.of(),
+                        ExecutionTrace.placeholder(),
+                        "workflow",
+                        QueryType.FILTER_AND_LIST,
+                        false,
+                        List.of(),
+                        Optional.empty(),
+                        sources,
+                        AnswerFinality.STANDARD);
+
+        RagExecutionResult out = FinalAnswerSynthesizer.apply(plan, terminal);
+
+        assertThat(out.answerText()).doesNotContain("Based");
+        assertThat(out.responseSources()).isEqualTo(sources);
+    }
+
+    private static QueryPlan plan(String query, QueryType queryType) {
     return new QueryPlan(
         QueryPlan.VERSION_P6_QU_CORE_V1,
         query,

@@ -18,6 +18,7 @@ import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpMetrics
 import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpRollupCalculator;
 import com.uniovi.rag.application.service.evaluation.metrics.BenchmarkMvpSchema;
 import com.uniovi.rag.application.service.evaluation.metrics.RagPresetAdvancedRetrievalMetrics;
+import com.uniovi.rag.application.service.evaluation.export.EvaluationExportV1Builder;
 import com.uniovi.rag.application.service.evaluation.metrics.matching.ExpectedAnswerMatchResult;
 import com.uniovi.rag.application.service.runtime.routing.CompositionRouteTelemetryMapper;
 import com.uniovi.rag.configuration.RagApiPathProperties;
@@ -573,7 +574,7 @@ public class LabEvaluationRunService {
         return out;
     }
 
-    /** MVP flat CSV ({@code items.csv}) — UTF-8, header row only (no {@code #META} line). */
+    /** MVP flat CSV ({@code items.csv}) - UTF-8, header row only (no {@code #META} line). */
     @Transactional(readOnly = true)
     public String exportMvpItemsCsv(UUID userId, UUID runId) {
         EvaluationRunEntity run = requireRun(userId, runId);
@@ -605,6 +606,38 @@ public class LabEvaluationRunService {
             return Map.copyOf(enriched);
         }
         return rollups;
+    }
+
+    /** Export contract v1 - unified {@code results.json} (run, provider, model, per-question results + technical). */
+    @Transactional(readOnly = true)
+    public Map<String, Object> exportResultsJsonV1(UUID userId, UUID runId) {
+        EvaluationRunEntity run = requireRun(userId, runId);
+        List<EvaluationResultEntity> items = listPersistedItems(run, userId);
+        return EvaluationExportV1Builder.buildResultsJson(run, items);
+    }
+
+    /** Export contract v1 - {@code summary.csv} (≤20 columns, no scoring changes). */
+    @Transactional(readOnly = true)
+    public String exportSummaryCsvV1(UUID userId, UUID runId) {
+        EvaluationRunEntity run = requireRun(userId, runId);
+        List<EvaluationResultEntity> items = listPersistedItems(run, userId);
+        return EvaluationExportV1Builder.buildSummaryCsv(run, items);
+    }
+
+    /** Export contract v1 - zip with {@code results.json}, {@code summary.csv}, and legacy MVP artifacts. */
+    @Transactional(readOnly = true)
+    public byte[] exportFullBundleZipV1(UUID userId, UUID runId) {
+        EvaluationRunEntity run = requireRun(userId, runId);
+        List<EvaluationResultEntity> items = listPersistedItems(run, userId);
+        try {
+            String legacyItemsJson = objectMapper.writeValueAsString(exportMvpItemsJsonBundle(userId, runId));
+            String legacyRollupsJson = objectMapper.writeValueAsString(exportMvpRollupsJson(userId, runId));
+            String legacyCsv = exportMvpItemsCsv(userId, runId);
+            return EvaluationExportV1Builder.buildFullBundleZip(
+                    run, items, legacyItemsJson, legacyCsv, legacyRollupsJson, objectMapper);
+        } catch (JsonProcessingException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Could not build export bundle");
+        }
     }
 
     private List<Map<String, Object>> buildMvpItemPayload(EvaluationRunEntity run, UUID userId) {

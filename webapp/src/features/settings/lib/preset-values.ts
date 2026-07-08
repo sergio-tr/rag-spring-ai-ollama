@@ -36,7 +36,7 @@ export function partitionPresetImportValues(
   return { structured, extrasAllowed };
 }
 
-/** Final preset `values` map sent to POST — extras merged first; structured form wins; non-whitelisted keys dropped. */
+/** Final preset `values` map sent to POST - extras merged first; structured form wins; non-whitelisted keys dropped. */
 export function buildPresetSaveValues(
   formValues: ConfigFormValues,
   editableKeys: string[],

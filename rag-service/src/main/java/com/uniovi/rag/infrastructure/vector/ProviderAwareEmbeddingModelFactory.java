@@ -2,6 +2,7 @@ package com.uniovi.rag.infrastructure.vector;
 
 import com.uniovi.rag.application.service.llm.ProviderAwareEmbeddingService;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 /**
@@ -9,6 +10,7 @@ import org.springframework.stereotype.Component;
  * (provider resolved per call via {@link com.uniovi.rag.application.service.llm.LlmClientResolver}).
  */
 @Component
+@Profile("!e2e")
 public class ProviderAwareEmbeddingModelFactory {
 
     private final ProviderAwareEmbeddingService embeddingService;

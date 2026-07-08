@@ -66,6 +66,12 @@ public class MaterializationAwareSnapshotResolver {
                                 != ExperimentalPresetCanonicalCatalog.RequiredMaterialization.NONE) {
                     return catalog;
                 }
+                // P0/P1 and other NONE-catalog presets must not inherit runtime seed
+                // materializationStrategy (e.g. CHUNK_LEVEL on P0) as an index binding requirement.
+                if (catalog.requiredMaterialization()
+                        == ExperimentalPresetCanonicalCatalog.RequiredMaterialization.NONE) {
+                    return catalog;
+                }
                 ExperimentalPresetCanonicalCatalog.RequiredMaterialization fromRuntime =
                         requiredMaterializationFromRuntimeValues(
                                 ExperimentalPresetCanonicalCatalog.effectiveRuntimeValues(code));

@@ -35,14 +35,6 @@ public record HeuristicCombinationRule(String ruleId) implements CompatibilityRu
             suggestions.add("Set classifierModelId or disable metadata");
         }
 
-        if (ragConfig.expansionEnabled() && !ragConfig.useRetrieval()) {
-            warnings.add(
-                    CompatibilityViolation.of(
-                            "EXPANSION_WITHOUT_RETRIEVAL",
-                            "expansionEnabled with useRetrieval false is an unusual combination",
-                            ruleId));
-        }
-
         return new CompatibilityRuleOutcome(List.of(), warnings, suggestions);
     }
 }

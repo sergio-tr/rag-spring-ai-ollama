@@ -12,6 +12,7 @@ import com.uniovi.rag.domain.evaluation.workbook.EvaluationWorkbook;
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetDefinition;
 import com.uniovi.rag.domain.evaluation.workbook.ValidationReport;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -114,5 +115,12 @@ class LabExperimentalPresetCatalogServiceTest {
         assertThat(p8.supportStatus()).isEqualTo("EXECUTABLE");
         assertThat(p6.reasonIfUnsupported()).isNull();
         assertThat(p8.reasonIfUnsupported()).isNull();
+
+        assertThat(rows.stream().map(r -> r.protocolStageIndex()).toList())
+                .isSortedAccordingTo(Comparator.naturalOrder());
+
+        var p15 = rows.stream().filter(r -> "P15".equals(r.code())).findFirst().orElseThrow();
+        assertThat(p15.label()).isEqualTo("Integrated single-turn composition");
+        assertThat(p15.description()).contains("adaptive route composition");
     }
 }

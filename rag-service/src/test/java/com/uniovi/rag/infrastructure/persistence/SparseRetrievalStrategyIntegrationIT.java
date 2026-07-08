@@ -7,21 +7,20 @@ import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
+import com.uniovi.rag.testsupport.PostgresIntegrationTestSupport;
+import com.uniovi.rag.testsupport.PostgresIntegrationTestSupport.PostgresBinding;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -33,7 +32,7 @@ class SparseRetrievalStrategyIntegrationIT {
     private static final String PROBE_TOKEN = "zxqv_sparse_probe_token";
     private static final String ZERO_VECTOR_1024 = buildZeroVector(1024);
 
-    private static PostgreSQLContainer<?> postgresContainer;
+    private static PostgresBinding postgresBinding;
     private static DataSource sharedDataSource;
 
     private JdbcTemplate jdbcTemplate;
@@ -42,35 +41,14 @@ class SparseRetrievalStrategyIntegrationIT {
 
     @BeforeAll
     static void startOrBindDatabase() {
-        String externalUrl = resolveExternalJdbcUrl();
-        if (externalUrl != null && !externalUrl.isBlank()) {
-            String user = Optional.ofNullable(System.getenv("SPRING_DATASOURCE_USERNAME")).orElse("postgres");
-            String password = Optional.ofNullable(System.getenv("SPRING_DATASOURCE_PASSWORD")).orElse("postgres");
-            sharedDataSource = new DriverManagerDataSource(externalUrl, user, password);
-            return;
-        }
-        try {
-            postgresContainer =
-                    new PostgreSQLContainer<>("pgvector/pgvector:0.8.2-pg16-bookworm")
-                            .withDatabaseName("testdb")
-                            .withUsername("test")
-                            .withPassword("test")
-                            .withInitScript("test-init.sql");
-            postgresContainer.start();
-            sharedDataSource =
-                    new DriverManagerDataSource(
-                            postgresContainer.getJdbcUrl(),
-                            postgresContainer.getUsername(),
-                            postgresContainer.getPassword());
-        } catch (Throwable t) {
-            Assumptions.abort("Postgres via Testcontainers unavailable: " + t.getMessage());
-        }
+        postgresBinding = PostgresIntegrationTestSupport.startJdbcIntegrationDatabase();
+        sharedDataSource = postgresBinding.dataSource();
     }
 
     @AfterAll
     static void stopContainer() {
-        if (postgresContainer != null) {
-            postgresContainer.stop();
+        if (postgresBinding != null) {
+            postgresBinding.cleanup().run();
         }
     }
 
@@ -237,17 +215,6 @@ class SparseRetrievalStrategyIntegrationIT {
             vectorStoreProjectFkEnforced = count != null && count > 0;
         }
         return vectorStoreProjectFkEnforced;
-    }
-
-    private static String resolveExternalJdbcUrl() {
-        String explicit = System.getenv("INTEGRATION_JDBC_URL");
-        if (explicit != null && !explicit.isBlank()) {
-            return explicit;
-        }
-        if ("true".equalsIgnoreCase(System.getenv("GITHUB_ACTIONS"))) {
-            return "jdbc:postgresql://localhost:5432/testdb";
-        }
-        return null;
     }
 
     private static String buildZeroVector(int dims) {

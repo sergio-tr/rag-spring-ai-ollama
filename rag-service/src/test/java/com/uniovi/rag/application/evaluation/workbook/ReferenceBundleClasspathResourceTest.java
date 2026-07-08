@@ -26,6 +26,7 @@ class ReferenceBundleClasspathResourceTest {
                             WorkbookSheetNames.CORPUS_DOCUMENTS,
                             WorkbookSheetNames.CHUNK_REGISTRY,
                             WorkbookSheetNames.LLM_READER_QUESTIONS,
+                            WorkbookSheetNames.LLM_ROLE_EVAL_CASES,
                             WorkbookSheetNames.EMBEDDING_RETRIEVAL_QUERIES,
                             WorkbookSheetNames.RAG_PRESET_QUESTIONS_ENRICHED,
                             WorkbookSheetNames.LLM_CANDIDATES,
@@ -37,6 +38,7 @@ class ReferenceBundleClasspathResourceTest {
 
             // Canonical dataset row-count expectations (guards against accidental demo bundle regressions).
             assertThat(parsed.workbook().llmReaderQuestions()).hasSize(36);
+            assertThat(parsed.workbook().llmRoleEvalCases()).hasSize(64);
             assertThat(parsed.workbook().embeddingRetrievalQueries()).hasSize(60);
             assertThat(parsed.workbook().ragPresetQuestionsEnriched()).hasSize(60);
             assertThat(parsed.workbook().chunkRegistry()).hasSize(30);

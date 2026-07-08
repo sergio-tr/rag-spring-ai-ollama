@@ -1,5 +1,8 @@
 package com.uniovi.rag.application.service.runtime.routing;
 
+import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolNegativeAnswerDetector;
+import com.uniovi.rag.application.service.runtime.query.ActaSlashDateSupport;
 import com.uniovi.rag.application.service.runtime.query.QueryPlanSlotEnricher;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
@@ -12,7 +15,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Terminal routing for dated metadata GET_FIELD queries — avoids workflow RAG overwriting deterministic answers.
+ * Terminal routing for dated metadata GET_FIELD queries - avoids workflow RAG overwriting deterministic answers.
  */
 public final class TerminalGetFieldRoutingSupport {
 
@@ -32,7 +35,9 @@ public final class TerminalGetFieldRoutingSupport {
             return false;
         }
         String answer = toolResult.answerText();
-        return answer != null && !answer.isBlank();
+        return answer != null
+                && !answer.isBlank()
+                && !DeterministicToolNegativeAnswerDetector.isNegativeOrNoData(answer);
     }
 
     public static boolean isTerminalMetadataGetField(QueryPlan plan) {
@@ -66,8 +71,8 @@ public final class TerminalGetFieldRoutingSupport {
                                 + " "
                                 + (plan.normalizedQueryText() == null ? "" : plan.normalizedQueryText()))
                         .toLowerCase(Locale.ROOT);
-        return query.matches(".*\\d{1,2}/\\d{1,2}/\\d{4}.*")
-                || query.matches(".*\\d{1,2}\\s+de\\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\\s+de\\s+\\d{4}.*");
+        return ActaFieldAnchorHeuristics.hasExplicitDateInText(query)
+                || ActaSlashDateSupport.hasSlashOrDashDateInText(query);
     }
 
     private static boolean hasTerminalMetadataFieldSlot(QueryPlan plan) {
@@ -97,6 +102,10 @@ public final class TerminalGetFieldRoutingSupport {
                                     + " "
                                     + (plan.normalizedQueryText() == null ? "" : plan.normalizedQueryText()))
                             .toLowerCase(Locale.ROOT);
+            if ((query.contains("presentes") || query.contains("presente"))
+                    && (query.contains("quiénes") || query.contains("quienes") || query.contains("estuvieron"))) {
+                return "attendees";
+            }
             if ((query.contains("cuantos") || query.contains("cuántos"))
                     && (query.contains("asistieron")
                             || query.contains("participante")

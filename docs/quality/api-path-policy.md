@@ -18,9 +18,9 @@ Counts are **`rg '/api/v5'`** occurrence counts per file (not unique test cases)
 
 | Area | Representative files | Role |
 | ------ | ------------------------ | ------ |
-| **Backend config** | `RagApiPathProperties.java`, `application.properties` | Default constant and binder — **expected** |
-| **Backend tests** | `RagApiPathAndAccountAndRuntimePropertiesTest.java`, `RagApiTestPaths.java` | Assertions and fallback for property load — **expected** |
-| **Webapp client** | `webapp/src/lib/api-client.ts` | Default prefix when env unset — **expected** |
+| **Backend config** | `RagApiPathProperties.java`, `application.properties` | Default constant and binder - **expected** |
+| **Backend tests** | `RagApiPathAndAccountAndRuntimePropertiesTest.java`, `RagApiTestPaths.java` | Assertions and fallback for property load - **expected** |
+| **Webapp client** | `webapp/src/lib/api-client.ts` | Default prefix when env unset - **expected** |
 | **Webapp tests** | `lab-job-follow.test.ts`, `lab-job-sse.test.ts` | Prefer deriving from shared test constant aligned with `NEXT_PUBLIC_RAG_API_PREFIX` when touching these files |
 | **E2E / Playwright** | `webapp/e2e/support/helpers.ts`, `webapp/e2e/api/fixtures/env.ts` | Env-driven; default `/api/v5` for local stack |
 | **CI / Compose** | `reusable-ci-core.yml`, `docker-compose.yml`, `e2e-fullstack.yml`, `e2e.yml` | Build-time / runtime defaults for stacks |

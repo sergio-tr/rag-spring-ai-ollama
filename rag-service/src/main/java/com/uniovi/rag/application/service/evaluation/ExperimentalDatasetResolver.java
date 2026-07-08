@@ -3,11 +3,14 @@ package com.uniovi.rag.application.service.evaluation;
 import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
 import com.uniovi.rag.application.evaluation.workbook.LabDatasetGateValidator;
 import com.uniovi.rag.application.port.EvaluationDatasetStorePort;
+import com.uniovi.rag.application.service.evaluation.metrics.DatasetQuestionSubsetSupport;
+import com.uniovi.rag.application.service.evaluation.metrics.RoleEvalCaseSubsetSupport;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.domain.evaluation.workbook.EmbeddingRetrievalDataset;
 import com.uniovi.rag.domain.evaluation.workbook.EmbeddingRetrievalQuery;
 import com.uniovi.rag.domain.evaluation.workbook.ExperimentalDatasetType;
 import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
+import com.uniovi.rag.domain.evaluation.workbook.LlmRoleEvalCase;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
 import com.uniovi.rag.domain.evaluation.workbook.ValidationReport;
 import com.uniovi.rag.domain.evaluation.workbook.WorkbookParseResult;
@@ -84,29 +87,52 @@ public class ExperimentalDatasetResolver {
             throw new BenchmarkDatasetResolutionException(gate);
         }
 
+        DatasetQuestionSubsetSupport.ResolvedSubset subset =
+                DatasetQuestionSubsetSupport.readFromRun(run)
+                        .orElse(DatasetQuestionSubsetSupport.ResolvedSubset.all());
+
         return switch (kind) {
             case LLM_JUDGE_QA -> {
-                List<LlmReaderQuestion> qs = wb.llmReaderQuestions();
+                if (RoleEvalCaseSubsetSupport.isRoleEvalMode(run)) {
+                    RoleEvalCaseSubsetSupport.RoleEvalFilter filter =
+                            RoleEvalCaseSubsetSupport.resolveFilterFromRun(run);
+                    List<LlmRoleEvalCase> cases =
+                            RoleEvalCaseSubsetSupport.filter(wb.llmRoleEvalCases(), filter);
+                    if (cases.isEmpty()) {
+                        throw new BenchmarkDatasetResolutionException(
+                                "Parsed workbook has no llm_role_eval_cases rows for role-eval run"
+                                        + (filter.unrestricted() ? "" : " after role-eval filter"));
+                    }
+                    yield new TypedBenchmarkDataset.LlmRoleCases(cases);
+                }
+                List<LlmReaderQuestion> qs =
+                        DatasetQuestionSubsetSupport.filterLlmQuestions(wb.llmReaderQuestions(), subset);
                 if (qs.isEmpty()) {
                     throw new BenchmarkDatasetResolutionException(
-                            "Parsed workbook has no llm_reader_questions rows for LLM_JUDGE_QA");
+                            "Parsed workbook has no llm_reader_questions rows for LLM_JUDGE_QA"
+                                    + (subset.allQuestions() ? "" : " after dataset question subset filter"));
                 }
                 yield new TypedBenchmarkDataset.LlmQuestions(qs, wb.corpusDocuments());
             }
             case EMBEDDING_RETRIEVAL -> {
-                List<EmbeddingRetrievalQuery> qs = wb.embeddingRetrievalQueries();
+                List<EmbeddingRetrievalQuery> qs =
+                        DatasetQuestionSubsetSupport.filterEmbeddingQueries(
+                                wb.embeddingRetrievalQueries(), subset);
                 if (qs.isEmpty()) {
                     throw new BenchmarkDatasetResolutionException(
-                            "Parsed workbook has no embedding_retrieval_queries rows for EMBEDDING_RETRIEVAL");
+                            "Parsed workbook has no embedding_retrieval_queries rows for EMBEDDING_RETRIEVAL"
+                                    + (subset.allQuestions() ? "" : " after dataset question subset filter"));
                 }
                 yield new TypedBenchmarkDataset.EmbeddingQuestions(
                         new EmbeddingRetrievalDataset(qs, wb.chunkRegistry(), wb.corpusDocuments()));
             }
             case RAG_PRESET_END_TO_END -> {
-                List<RagPresetQuestion> qs = wb.ragPresetQuestionsEnriched();
+                List<RagPresetQuestion> qs =
+                        DatasetQuestionSubsetSupport.filterQuestions(wb.ragPresetQuestionsEnriched(), subset);
                 if (qs.isEmpty()) {
                     throw new BenchmarkDatasetResolutionException(
-                            "Parsed workbook has no rag_preset_questions_enriched rows for RAG_PRESET_END_TO_END");
+                            "Parsed workbook has no rag_preset_questions_enriched rows for RAG_PRESET_END_TO_END"
+                                    + (subset.allQuestions() ? "" : " after dataset question subset filter"));
                 }
                 yield new TypedBenchmarkDataset.RagPresetQuestions(qs, wb.ragPresetCatalog());
             }

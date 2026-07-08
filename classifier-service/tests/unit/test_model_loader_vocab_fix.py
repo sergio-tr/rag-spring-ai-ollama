@@ -1,5 +1,7 @@
 import zipfile
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from app.config import Config
@@ -35,12 +37,14 @@ def test_load_model_with_vocab_fix_repairs_latin1_vocab_and_retries(monkeypatch,
     # Write a .keras zip with latin-1 bytes that are invalid utf-8.
     _write_keras_zip(model_path, "áéíóú\n".encode("latin-1"))
     labels_path.write_text("COUNT_DOCUMENTS\n")
+    (default_dir / "metadata.json").write_text('{"modelType":"keras"}', encoding="utf-8")
 
     monkeypatch.setenv("MODELS_DIR", str(models_dir))
     monkeypatch.setenv("DEFAULT_MODEL_ID", "default")
 
     import app.inference.model_loader as model_loader_mod
 
+    mock_tf = MagicMock()
     calls = {"count": 0}
 
     def _fake_load_model(_path):
@@ -49,13 +53,14 @@ def test_load_model_with_vocab_fix_repairs_latin1_vocab_and_retries(monkeypatch,
             raise ValueError("utf-8 codec can't decode bytes in TextVectorization")
         return object()
 
-    monkeypatch.setattr(model_loader_mod.tf.keras.models, "load_model", _fake_load_model)
+    monkeypatch.setattr(model_loader_mod, "require_tensorflow", lambda: mock_tf)
+    monkeypatch.setattr(mock_tf.keras.models, "load_model", _fake_load_model)
 
     loader = ModelLoader(config=Config())
-    model, class_names = loader.load_by_id("default")
+    loaded = loader.load_by_id("default")
 
-    assert model is not None
-    assert class_names == ["COUNT_DOCUMENTS"]
+    assert loaded.artifact is not None
+    assert loaded.class_names == ["COUNT_DOCUMENTS"]
     assert calls["count"] == 2  # initial failure + retry after vocab fix
 
     # Confirm vocab files are now utf-8 decodable.
@@ -75,16 +80,20 @@ def test_load_model_with_vocab_fix_does_not_swallow_unrelated_value_error(monkey
     labels_path = default_dir / "labels.txt"
     _write_keras_zip(model_path, b"ok\n")
     labels_path.write_text("COUNT_DOCUMENTS\n")
+    (default_dir / "metadata.json").write_text('{"modelType":"keras"}', encoding="utf-8")
 
     monkeypatch.setenv("MODELS_DIR", str(models_dir))
     monkeypatch.setenv("DEFAULT_MODEL_ID", "default")
 
     import app.inference.model_loader as model_loader_mod
 
+    mock_tf = MagicMock()
+
     def _fake_load_model(_path):
         raise ValueError("some other keras error")
 
-    monkeypatch.setattr(model_loader_mod.tf.keras.models, "load_model", _fake_load_model)
+    monkeypatch.setattr(model_loader_mod, "require_tensorflow", lambda: mock_tf)
+    monkeypatch.setattr(mock_tf.keras.models, "load_model", _fake_load_model)
 
     loader = ModelLoader(config=Config())
     with pytest.raises(ValueError, match="some other keras error"):

@@ -66,4 +66,33 @@ describe("model-management hardcode guard", () => {
     expect(chatPage).not.toMatch(/llm-campaign-preferred-models/);
     expect(chatPage).not.toMatch(/LLM_CAMPAIGN_PREFERRED_MODEL_IDS/);
   });
+  
+  it("admin panel uses catalog API instead of legacy allowlist listing", () => {
+    const adminPage = readFileSync(join(webappRoot, "src/app/[locale]/(app)/admin/page.tsx"), "utf8");
+    const catalogHook = readFileSync(
+      join(webappRoot, "src/features/admin/hooks/use-llm-catalog.ts"),
+      "utf8",
+    );
+    expect(adminPage).toMatch(/useLlmCatalog/);
+    expect(catalogHook).toMatch(/\/llm\/catalog/);
+    expect(adminPage).not.toMatch(/AdminModelEntryDto/);
+    expect(adminPage).not.toMatch(/\/admin\/models[^/]/);
+    expect(adminPage).not.toMatch(/llm-campaign-preferred-models/);
+  });
+
+  it("lab evaluation uses catalog API instead of preferred model lists", () => {
+    const labCard = readFileSync(
+      join(webappRoot, "src/features/lab/components/lab-evaluation-run-card.tsx"),
+      "utf8",
+    );
+    const labHook = readFileSync(
+      join(webappRoot, "src/features/lab/hooks/use-lab-evaluation-models.ts"),
+      "utf8",
+    );
+    expect(labCard).toMatch(/useLabEvaluationModels/);
+    expect(labHook).toMatch(/\/lab\/evaluation-models/);
+    expect(labCard).not.toMatch(/useModelsByType/);
+    expect(labCard).not.toMatch(/embedding-campaign-preferred-models/);
+    expect(labCard).not.toMatch(/llm-campaign-preferred-models/);
+  });
 });

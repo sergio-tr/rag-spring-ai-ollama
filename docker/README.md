@@ -2,9 +2,9 @@
 
 Orchestration files (`docker-compose.yml`, `compose.*.yml`) and operational documentation for the stack.
 
-**See also:** [Deployment model](../docs/architecture/deployment-model.md), [runbook — Docker VM](../docs/operations/runbook-docker-vm.md).
+**See also:** [Deployment model](../docs/architecture/deployment-model.md), [runbook - Docker VM](../docs/operations/runbook-docker-vm.md).
 
-**Target architecture (frozen model):** [ADR 0006 — Keycloak & HTTPS foundation](../docs/adr/0006-keycloak-identity-and-https-foundation.md).
+**Target architecture (frozen model):** [ADR 0006 - Keycloak & HTTPS foundation](../docs/adr/0006-keycloak-identity-and-https-foundation.md).
 
 **Images:** Every `FROM` in this monorepo targets a **Linux** userland (OpenJDK/Eclipse Temurin, Node, Python slim, Ollama CUDA variants, etc.). **Postgres** is built from **`db/Dockerfile`**; **`docker-compose.yml`** passes a **fixed** pgvector pin **`pgvector/pgvector:0.8.2-pg16-bookworm`** as `POSTGRES_BASE_IMAGE` (see [db/README.md](../db/README.md)). Loki, Promtail, node-exporter, and cAdvisor use thin Dockerfiles under **`observability/*/`** with tags from **`observability/.env`**. Compose is validated on **Linux** hosts and in **CI** (`ubuntu-*`); use Linux or WSL2 locally for parity.
 
@@ -156,8 +156,8 @@ Compose uses **`build:`** with `context` + `dockerfile` and **`args`** fed from 
 ## Parameterization policy
 
 - **Pinned upstream bases** live in component `*.env` / `*.env.example` (e.g. `POSTGRES_BASE_IMAGE`, `*_BASE_IMAGE` in `observability/.env.example`). Compose references them as `${VAR:-default}` where appropriate.
-- **No `image:`** keys in `docker/*.yml` — thin Dockerfiles wrap official bases; CI checks this via [`compose_guard.py`](scripts/compose_guard.py).
-- **GitHub Actions** Postgres **service containers** in workflows are **not** Compose; they still declare a pinned `image:` (see [`reusable-ci-core.yml`](../.github/workflows/reusable-ci-core.yml)) — that is expected and outside `docker/*.yml`.
+- **No `image:`** keys in `docker/*.yml` - thin Dockerfiles wrap official bases; CI checks this via [`compose_guard.py`](scripts/compose_guard.py).
+- **GitHub Actions** Postgres **service containers** in workflows are **not** Compose; they still declare a pinned `image:` (see [`reusable-ci-core.yml`](../.github/workflows/reusable-ci-core.yml)) - that is expected and outside `docker/*.yml`.
 
 ## CI validation
 
@@ -259,6 +259,7 @@ Options:
 
 - Use `./docker/scripts/up.sh prod --obs --no-env-prompt` to include `compose.obs.yml` and **`--profile observability`** (OTEL, Jaeger, Prometheus, Grafana).
 - Use `./docker/scripts/up.sh prod --obs --obs-private --no-env-prompt` when you need observability but do not want Jaeger/Prometheus/Grafana published on host ports.
+- **Production server (university VM):** `./docker/scripts/up.sh prod --server --obs --obs-private --no-env-prompt` merges `compose.prod-server.yml` (reverse-proxy only public entry; Spring profile `prod,docker,infra`; LiteLLM-only; no Mailpit). Used by [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) on the self-hosted runner.
 - `--gpu` or `--ollama`: adds **`--profile ollama`** only when the NVIDIA runtime is available (requires `ollama/.env` and NVIDIA Container Toolkit).
 - `--volumes` (only `down.sh`): also remove named volumes
 
@@ -267,8 +268,9 @@ Options:
 Use the official local/demo stack above, then capture evidence without committing secrets:
 
 ```bash
-mkdir -p .cursor/context/evidence/docker-observability
-docker ps > .cursor/context/evidence/docker-observability/docker-ps.txt
+EVIDENCE_DIR="${EVIDENCE_DIR:-exports/evaluation-evidence/docker-observability}"
+mkdir -p "$EVIDENCE_DIR"
+docker ps > "$EVIDENCE_DIR/docker-ps.txt"
 docker compose -f docker/docker-compose.yml -f docker/compose.obs.yml -f docker/compose.prod.yml \
   --profile observability \
   --env-file db/.env \
@@ -276,12 +278,12 @@ docker compose -f docker/docker-compose.yml -f docker/compose.obs.yml -f docker/
   --env-file rag-service/.env \
   --env-file webapp/.env \
   --env-file observability/.env \
-  logs --no-color backend > .cursor/context/evidence/docker-observability/backend.log
-curl -sf http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/actuator/health > .cursor/context/evidence/docker-observability/backend-health.json
-curl -sf http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/actuator/prometheus > .cursor/context/evidence/docker-observability/backend-prometheus.txt
-curl -sf http://127.0.0.1:${PROMETHEUS_PORT:-9090}/-/healthy > .cursor/context/evidence/docker-observability/prometheus-health.txt
-curl -sf http://127.0.0.1:${GRAFANA_PORT:-3000}/api/health > .cursor/context/evidence/docker-observability/grafana-health.json
-curl -sf http://127.0.0.1:${JAEGER_UI_PORT:-16686}/ > .cursor/context/evidence/docker-observability/jaeger-root.html
+  logs --no-color backend > "$EVIDENCE_DIR/backend.log"
+curl -sf http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/actuator/health > "$EVIDENCE_DIR/backend-health.json"
+curl -sf http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/actuator/prometheus > "$EVIDENCE_DIR/backend-prometheus.txt"
+curl -sf http://127.0.0.1:${PROMETHEUS_PORT:-9090}/-/healthy > "$EVIDENCE_DIR/prometheus-health.txt"
+curl -sf http://127.0.0.1:${GRAFANA_PORT:-3000}/api/health > "$EVIDENCE_DIR/grafana-health.json"
+curl -sf http://127.0.0.1:${JAEGER_UI_PORT:-16686}/ > "$EVIDENCE_DIR/jaeger-root.html"
 ```
 
 For screenshots, open Grafana and Jaeger at the URLs printed by `up.sh prod --obs`. Generate at least one Chat or Lab request first, then capture the Grafana dashboard and the Jaeger trace detail. Record the trace ID shown in the UI or in backend logs. Do not store real passwords, JWTs, cookies, or OAuth secrets in evidence files.
@@ -330,14 +332,16 @@ Keep a copy of the repo (e.g. `/opt/rag-spring-ai-ollama`):
 
 > Note: if the backend is not exposed directly (only via reverse proxy), use the reverse-proxy published port (`REVERSE_PROXY_HTTP_PORT` defaults to **80** in `compose.prod.yml`; HTTPS uses `REVERSE_PROXY_HTTPS_PORT`, default **8443** until TLS on **443** is wired).
 
-### HTTPS certificate policy (local/prod-like)
+### HTTPS certificate policy (local / production)
 
-- The reverse-proxy image generates a self-signed certificate by default for local/prod-like testing.
-- You can provide certificate paths with:
-  - `TLS_CERT_PATH`
-  - `TLS_KEY_PATH`
-- Do not commit certificate files or private keys to this repository.
-- For production issuance/renewal with external accounts (ACME, cloud certificates), document operational steps outside this branch scope.
+- The reverse-proxy container generates a **self-signed** certificate at **startup** when `tls.crt` / `tls.key` are missing (see [`../reverse-proxy/README.md`](../reverse-proxy/README.md)).
+- SAN entries are configured with `TLS_CERT_DNS_*`, `TLS_CERT_IP_*`, and `TLS_CERT_COMMON_NAME`.
+- Certificates persist in Docker volume **`reverse_proxy_certs`** mounted at `/etc/nginx/certs`.
+- **Local dev** (`dev --proxy`): HTTP `http://localhost:8080`, HTTPS `https://localhost:8443`, redirect off by default.
+- **Production**: set `REVERSE_PROXY_HTTP_PORT=80`, `REVERSE_PROXY_HTTPS_PORT=443`, `REVERSE_PROXY_ENFORCE_HTTPS=1`, `REVERSE_PROXY_HTTPS_PORT_SUFFIX=` (empty), and university hostname SANs. Open port **443** on the host firewall.
+- Browsers warn on self-signed certs unless trusted manually; use a CA-signed certificate for public production (mount into the cert volume).
+- **Google OAuth** redirect URIs must match the exact production HTTPS callback URL.
+- Override paths with `TLS_CERT_PATH` and `TLS_KEY_PATH`. Do not commit keys to the repository.
 
 ### Log rotation and volumes
 
@@ -348,6 +352,7 @@ Keep a copy of the repo (e.g. `/opt/rag-spring-ai-ollama`):
    - `prometheus_data`
    - `grafana_data`
    - `ollama_data`
+   - `reverse_proxy_certs`
 3. Backups:
    - Use `db/scripts/backup-db.sh` / `db/scripts/restore-db.sh` for PostgreSQL.
 

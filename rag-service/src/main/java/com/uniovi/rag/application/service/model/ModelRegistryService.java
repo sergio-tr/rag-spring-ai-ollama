@@ -1,12 +1,18 @@
 package com.uniovi.rag.application.service.model;
 
-import com.uniovi.rag.domain.product.ModelRegistryAvailabilityStatus;
+import com.uniovi.rag.application.port.llm.catalog.LlmModelCatalogPort;
 import com.uniovi.rag.domain.AllowedModelType;
-import com.uniovi.rag.domain.product.ProductDemoModel;
+import com.uniovi.rag.domain.llm.LlmProvider;
+import com.uniovi.rag.domain.llm.catalog.LlmCatalogEntry;
+import com.uniovi.rag.domain.llm.catalog.LlmCatalogQuery;
+import com.uniovi.rag.domain.llm.catalog.LlmModelCapability;
+import com.uniovi.rag.domain.product.ModelRegistryAvailabilityStatus;
 import com.uniovi.rag.infrastructure.llm.ollama.OllamaApiClient;
 import com.uniovi.rag.interfaces.rest.dto.modelregistry.ModelRegistryItemDto;
 import com.uniovi.rag.interfaces.rest.dto.modelregistry.ModelRegistryResponseDto;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -16,8 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Read-only curated model registry + Ollama presence checks. Pull is delegated to {@link com.uniovi.rag.application.service.async.AsyncTaskService}
- * after validating the model id is in {@link ProductDemoModel}.
+ * Read-only configured model registry with optional Ollama presence checks.
+ * Recommended models are derived from the properties-backed LLM catalog - not hardcoded demo enums.
  */
 @Service
 public class ModelRegistryService {
@@ -25,59 +31,79 @@ public class ModelRegistryService {
     private static final long EMBEDDING_PROBE_TIMEOUT_MS = 10_000;
 
     private final OllamaApiClient ollamaApiClient;
+    private final LlmModelCatalogPort modelCatalog;
 
-    public ModelRegistryService(OllamaApiClient ollamaApiClient) {
+    public ModelRegistryService(OllamaApiClient ollamaApiClient, LlmModelCatalogPort modelCatalog) {
         this.ollamaApiClient = ollamaApiClient;
+        this.modelCatalog = modelCatalog;
     }
 
     @Transactional(readOnly = true)
     public ModelRegistryResponseDto snapshot() {
         OllamaTagsResult tags = loadTags();
-        List<ModelRegistryItemDto> llm =
-                ProductDemoModel.llmModels().stream().map(m -> buildSnapshotRow(m, tags)).toList();
-        List<ModelRegistryItemDto> emb =
-                ProductDemoModel.embeddingModels().stream().map(m -> buildSnapshotRow(m, tags)).toList();
-        return new ModelRegistryResponseDto(tags.reachable(), tags.errorMessage(), llm, emb);
+        List<ModelRegistryItemDto> llm = new ArrayList<>();
+        List<ModelRegistryItemDto> embedding = new ArrayList<>();
+        for (LlmCatalogEntry entry : modelCatalog.listConfigured(new LlmCatalogQuery(null, null, null, null))) {
+            if (!entry.available()) {
+                continue;
+            }
+            ModelRegistryItemDto row = buildSnapshotRow(entry, tags);
+            if (entry.capability() == LlmModelCapability.CHAT) {
+                llm.add(row);
+            } else if (entry.capability() == LlmModelCapability.EMBEDDING) {
+                embedding.add(row);
+            }
+        }
+        llm.sort(Comparator.comparing(ModelRegistryItemDto::modelId));
+        embedding.sort(Comparator.comparing(ModelRegistryItemDto::modelId));
+        return new ModelRegistryResponseDto(tags.reachable(), tags.errorMessage(), List.copyOf(llm), List.copyOf(embedding));
     }
 
     @Transactional(readOnly = true)
     public ModelRegistryItemDto check(String rawModelId, Boolean probeEmbeddingFlag) {
-        ProductDemoModel model =
-                ProductDemoModel.resolve(rawModelId)
-                        .orElseThrow(
-                                () -> new ResponseStatusException(
-                                        HttpStatus.BAD_REQUEST, "MODEL_NOT_IN_PRODUCT_REGISTRY"));
+        LlmCatalogEntry entry = resolveCatalogEntry(rawModelId)
+                .orElseThrow(
+                        () -> new ResponseStatusException(
+                                HttpStatus.BAD_REQUEST, "MODEL_NOT_IN_CONFIGURED_CATALOG"));
+        AllowedModelType modelType =
+                entry.capability() == LlmModelCapability.EMBEDDING
+                        ? AllowedModelType.EMBEDDING
+                        : AllowedModelType.LLM;
         boolean probe =
-                model.modelType() != AllowedModelType.EMBEDDING
+                modelType != AllowedModelType.EMBEDDING
                         || probeEmbeddingFlag == null
                         || Boolean.TRUE.equals(probeEmbeddingFlag);
+        if (entry.provider() != LlmProvider.OLLAMA_NATIVE) {
+            return new ModelRegistryItemDto(
+                    entry.modelName(), modelType, ModelRegistryAvailabilityStatus.AVAILABLE, null, null);
+        }
         OllamaTagsResult tags = loadTags();
         if (!tags.reachable()) {
             return new ModelRegistryItemDto(
-                    model.modelId(),
-                    model.modelType(),
+                    entry.modelName(),
+                    modelType,
                     ModelRegistryAvailabilityStatus.ERROR,
                     tags.errorMessage(),
                     null);
         }
-        boolean installed = OllamaInstalledModelMatcher.matchesInstalledName(model.modelId(), tags.installed());
+        boolean installed = OllamaInstalledModelMatcher.matchesInstalledName(entry.modelName(), tags.installed());
         if (!installed) {
             return new ModelRegistryItemDto(
-                    model.modelId(),
-                    model.modelType(),
+                    entry.modelName(),
+                    modelType,
                     ModelRegistryAvailabilityStatus.MISSING,
                     "Model not installed locally in Ollama",
                     null);
         }
-        if (model.modelType() == AllowedModelType.EMBEDDING && probe) {
-            List<String> matches = OllamaInstalledModelMatcher.findMatchingInstalledNames(model.modelId(), tags.installed());
-            String probeName = OllamaInstalledModelMatcher.pickBestInstalledName(model.modelId(), matches);
+        if (modelType == AllowedModelType.EMBEDDING && probe) {
+            List<String> matches = OllamaInstalledModelMatcher.findMatchingInstalledNames(entry.modelName(), tags.installed());
+            String probeName = OllamaInstalledModelMatcher.pickBestInstalledName(entry.modelName(), matches);
             try {
                 var probeResult = ollamaApiClient.probeEmbeddingDetailed(probeName, "ping", EMBEDDING_PROBE_TIMEOUT_MS);
                 if (!probeResult.ok()) {
                     return new ModelRegistryItemDto(
-                            model.modelId(),
-                            model.modelType(),
+                            entry.modelName(),
+                            modelType,
                             ModelRegistryAvailabilityStatus.ERROR,
                             probeResult.userMessage() != null
                                     ? probeResult.userMessage()
@@ -85,49 +111,81 @@ public class ModelRegistryService {
                             false);
                 }
                 return new ModelRegistryItemDto(
-                        model.modelId(), model.modelType(), ModelRegistryAvailabilityStatus.AVAILABLE, null, true);
+                        entry.modelName(), modelType, ModelRegistryAvailabilityStatus.AVAILABLE, null, true);
             } catch (Exception e) {
                 return new ModelRegistryItemDto(
-                        model.modelId(),
-                        model.modelType(),
+                        entry.modelName(),
+                        modelType,
                         ModelRegistryAvailabilityStatus.ERROR,
                         e.getMessage() != null ? e.getMessage() : "Embedding probe error",
                         false);
             }
         }
-        return new ModelRegistryItemDto(model.modelId(), model.modelType(), ModelRegistryAvailabilityStatus.AVAILABLE, null, null);
+        return new ModelRegistryItemDto(entry.modelName(), modelType, ModelRegistryAvailabilityStatus.AVAILABLE, null, null);
     }
 
-    /** Validates curated id; caller enqueues async Ollama pull. */
+    /** Validates catalog id; caller enqueues async Ollama pull when provider is local. */
     public void assertPullAllowed(String rawModelId) {
-        ProductDemoModel.resolve(rawModelId)
-                .orElseThrow(
-                        () -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "MODEL_NOT_IN_PRODUCT_REGISTRY"));
+        LlmCatalogEntry entry =
+                resolveCatalogEntry(rawModelId)
+                        .orElseThrow(
+                                () -> new ResponseStatusException(
+                                        HttpStatus.BAD_REQUEST, "MODEL_NOT_IN_CONFIGURED_CATALOG"));
+        if (entry.provider() != LlmProvider.OLLAMA_NATIVE) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "PULL_ONLY_SUPPORTED_FOR_LOCAL_MODEL_SERVER");
+        }
     }
 
-    private ModelRegistryItemDto buildSnapshotRow(ProductDemoModel model, OllamaTagsResult tags) {
+    private Optional<LlmCatalogEntry> resolveCatalogEntry(String rawModelId) {
+        if (rawModelId == null || rawModelId.isBlank()) {
+            return Optional.empty();
+        }
+        String modelId = rawModelId.trim();
+        for (LlmProvider provider : LlmProvider.values()) {
+            Optional<LlmCatalogEntry> chat = modelCatalog.find(provider, modelId, LlmModelCapability.CHAT);
+            if (chat.isPresent() && chat.get().available()) {
+                return chat;
+            }
+            Optional<LlmCatalogEntry> emb = modelCatalog.find(provider, modelId, LlmModelCapability.EMBEDDING);
+            if (emb.isPresent() && emb.get().available()) {
+                return emb;
+            }
+        }
+        return Optional.empty();
+    }
+
+    private ModelRegistryItemDto buildSnapshotRow(LlmCatalogEntry entry, OllamaTagsResult tags) {
+        AllowedModelType modelType =
+                entry.capability() == LlmModelCapability.EMBEDDING
+                        ? AllowedModelType.EMBEDDING
+                        : AllowedModelType.LLM;
+        if (entry.provider() != LlmProvider.OLLAMA_NATIVE) {
+            return new ModelRegistryItemDto(
+                    entry.modelName(), modelType, ModelRegistryAvailabilityStatus.AVAILABLE, null, null);
+        }
         if (!tags.reachable()) {
             return new ModelRegistryItemDto(
-                    model.modelId(),
-                    model.modelType(),
+                    entry.modelName(),
+                    modelType,
                     ModelRegistryAvailabilityStatus.ERROR,
                     tags.errorMessage(),
                     null);
         }
-        boolean installed = OllamaInstalledModelMatcher.matchesInstalledName(model.modelId(), tags.installed());
+        boolean installed = OllamaInstalledModelMatcher.matchesInstalledName(entry.modelName(), tags.installed());
         if (installed) {
             return new ModelRegistryItemDto(
-                    model.modelId(), model.modelType(), ModelRegistryAvailabilityStatus.AVAILABLE, null, null);
+                    entry.modelName(), modelType, ModelRegistryAvailabilityStatus.AVAILABLE, null, null);
         }
         return new ModelRegistryItemDto(
-                model.modelId(),
-                model.modelType(),
+                entry.modelName(),
+                modelType,
                 ModelRegistryAvailabilityStatus.MISSING,
                 "Model not installed locally in Ollama",
                 null);
     }
 
-    @SuppressWarnings("java:S2142") // interrupt restored
+    @SuppressWarnings("java:S2142")
     private OllamaTagsResult loadTags() {
         try {
             Set<String> names = ollamaApiClient.listModelNames();

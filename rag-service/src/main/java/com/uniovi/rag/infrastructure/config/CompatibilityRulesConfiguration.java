@@ -22,10 +22,8 @@ public class CompatibilityRulesConfiguration {
                 new MutuallyExclusiveCapabilitiesRule(
                         "mutual_function_calling_naive_corpus",
                         EnumSet.of(Capability.FUNCTION_CALLING, Capability.NAIVE_FULL_CORPUS_PROMPT)),
-                new RequiresCapabilitiesRule(
-                        "metadata_requires_tools",
-                        EnumSet.of(Capability.METADATA),
-                        EnumSet.of(Capability.TOOLS)),
+                // metadata+tools hard coupling removed for Phase 2.6 product presets (P4 metadata context without tools).
+                // HeuristicCombinationRule still warns when metadata is on without tools.
                 new RequiresCapabilitiesRule(
                         "post_retrieval_requires_retrieval",
                         EnumSet.of(Capability.POST_RETRIEVAL),

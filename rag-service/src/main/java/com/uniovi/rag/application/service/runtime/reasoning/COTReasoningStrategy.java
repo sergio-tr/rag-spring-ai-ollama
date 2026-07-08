@@ -2,14 +2,17 @@ package com.uniovi.rag.application.service.runtime.reasoning;
 
 import com.uniovi.rag.application.result.reasoning.PostStepOutput;
 import com.uniovi.rag.application.result.reasoning.ReasoningPreOutput;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 import com.uniovi.rag.domain.model.QueryType;
 import org.json.JSONObject;
-import org.springframework.ai.chat.client.ChatClient;
 
 /**
  * Chain-of-Thought: pre-step produces short reasoning; optional post-step checks coherence with context.
  */
 public class COTReasoningStrategy implements ReasoningStrategy {
+
+    public static final String OPERATION_COT_PRE = "reasoning-cot-pre";
+    public static final String OPERATION_COT_POST = "reasoning-cot-post";
 
     private static final String PRE_PROMPT = """
         Query: %s
@@ -24,17 +27,17 @@ public class COTReasoningStrategy implements ReasoningStrategy {
         Is this response coherent with the context? Answer only: Yes or No.
         """;
 
-    private final ChatClient chatClient;
+    private final ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor;
 
-    public COTReasoningStrategy(ChatClient chatClient) {
-        this.chatClient = chatClient;
+    public COTReasoningStrategy(ProviderAwareSecondaryLlmExecutor secondaryLlmExecutor) {
+        this.secondaryLlmExecutor = secondaryLlmExecutor;
     }
 
     @Override
     public ReasoningPreOutput runPreStep(String query, QueryType classification, JSONObject ner, String expandedQuery) {
         try {
             String prompt = String.format(PRE_PROMPT, expandedQuery, classification != null ? classification.name() : "UNKNOWN");
-            String thought = chatClient.prompt().user(prompt).call().content();
+            String thought = secondaryLlmExecutor.complete(OPERATION_COT_PRE, null, prompt);
             return ReasoningPreOutput.of(thought != null ? thought.trim() : "");
         } catch (Exception e) {
             return ReasoningPreOutput.of("");
@@ -49,7 +52,7 @@ public class COTReasoningStrategy implements ReasoningStrategy {
         try {
             String excerpt = context.length() > 500 ? context.substring(0, 500) + "..." : context;
             String prompt = String.format(POST_PROMPT, query, excerpt, draftResponse);
-            String answer = chatClient.prompt().user(prompt).call().content();
+            String answer = secondaryLlmExecutor.complete(OPERATION_COT_POST, null, prompt);
             boolean verified = answer != null && answer.trim().toLowerCase().startsWith("yes");
             return new PostStepOutput(draftResponse, verified);
         } catch (Exception e) {

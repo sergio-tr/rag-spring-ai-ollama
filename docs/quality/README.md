@@ -4,7 +4,7 @@ This hub records **verified** test execution, **exclusion inventories**, and **n
 
 **JaCoCo Coverage Target Ledger** (canonical exclude inventory, policy, Sonar vs JaCoCo parity, and the **Residual final allowlist** in the Wave 6.09 section): [../coverage/jacoco-coverage-target-ledger.md](../coverage/jacoco-coverage-target-ledger.md).
 
-**External test harness** (Ollama, classifier HTTP, OTLP — mocks and recipes): [../testing/external-test-harness.md](../testing/external-test-harness.md).
+**External test harness** (Ollama, classifier HTTP, OTLP - mocks and recipes): [../testing/external-test-harness.md](../testing/external-test-harness.md).
 
 **Other artifacts:** [Baseline runbook (local + CI)](../testing/baseline-runbook.md) · [Maven / JaCoCo inventory](maven-jacoco-inventory.md) · [Sonar baseline record](sonar-baseline-record.md) · [API path policy](api-path-policy.md) · [External mocks policy](external-mocks-policy.md) · [Coverage strategy (global vs new code)](coverage-strategy.md) · [Merge / release quality gates](merge-quality-gates.md).
 
@@ -25,7 +25,7 @@ Update this table when you re-run the canonical commands on a new release candid
 
 **Canonical commands (normative):** full prerequisites and CI equivalence → [../testing/baseline-runbook.md](../testing/baseline-runbook.md). Summary:
 
-1. **Backend:** `cd rag-service && ./mvnw clean verify` — JaCoCo `check` on bundle (line coverage ≥ 80% per [`pom.xml`](../../rag-service/pom.xml)).
+1. **Backend:** `cd rag-service && ./mvnw clean verify` - JaCoCo `check` on bundle (line coverage ≥ 80% per [`pom.xml`](../../rag-service/pom.xml)).
 2. **Classifier:** `cd classifier-service && pytest tests/ -v` (coverage via [`pytest.ini`](../../classifier-service/pytest.ini) / [`.coveragerc`](../../classifier-service/.coveragerc), `fail_under = 80`).
 3. **Webapp:** `cd webapp && npm ci && npm run lint && npm run typecheck && npm run test:coverage && npm run build`.
 
@@ -37,7 +37,7 @@ Update this table when you re-run the canonical commands on a new release candid
 
 ## Exclusion and filtering matrix
 
-Each row is a mechanism that changes what is **measured**, **analyzed**, or **run** — not all are “skipped tests”.
+Each row is a mechanism that changes what is **measured**, **analyzed**, or **run** - not all are “skipped tests”.
 
 | Mechanism | Scope | What it excludes or filters | Apparent reason | Still valid? | Recommended action |
 | ----------- | -------- | ------------------------------ | ----------------- | -------------- | ------------------- |
@@ -45,9 +45,9 @@ Each row is a mechanism that changes what is **measured**, **analyzed**, or **ru
 | `sonar.coverage.exclusions` / `sonar.exclusions` in [`sonar-project.properties`](../../sonar-project.properties) | Sonar metrics / analysis | Aligns with JaCoCo for rag-service Java coverage intent; adds **`**/domain/runtime/functioncalling/**`**, **`**/domain/runtime/retrieval/**`**, **`**/api/v5/dto/**`**, **`**/api/auth/dto/**`** (parity with the POM). **`service/analyser/**`** is **measured** (JaCoCo + Sonar exclusions removed 2026-04-21). Removed **`domain/entity`** patterns were **removed** (no matching Java sources). **`**/*Configuration.java`** / **`**/*Properties.java`** are **broader** than JaCoCo’s `com.uniovi.rag.configuration/**` (Sonar-only, on purpose). TS/Python noise paths unchanged. | Multi-language Sonar | Yes | When changing JaCoCo `<excludes>`, update `sonar.coverage.exclusions` for the same Java intent; re-run `verify` and a Sonar scan on release candidates |
 | Vitest `coverage.exclude` in [`webapp/vitest.config.ts`](../../webapp/vitest.config.ts) | Frontend coverage gate | App Router pages/layouts, some UI shells, etc. | E2E / manual | Review per file | Document in module README when changing |
 | Playwright `test:e2e` vs `test:e2e:fullstack` | CI jobs | Smoke excludes `@fullstack` | Time / infra | Yes | Treat as **CI filter**, not Maven exclusion |
-| pytest markers (`unit`, `integration`, `slow`, …) in [`classifier-service/pytest.ini`](../../classifier-service/pytest.ini) | Discovery | Classification | Selective runs | Yes | **CI alignment:** `core_classifier` runs **full** `pytest tests/ -v`; **`sonar` job** runs a **subset** (`tests/unit`, one regression file, `-m "not integration and not slow"`). Treat as **intentional split** (fast Sonar path vs full PR gate) — if they diverge in failure, investigate before merge |
-| `@EnabledIf` / `@Disabled` on Java tests | Surefire execution | Methods/classes not run when guard fails | Docker / Postgres availability (see [`TestEnvironment`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/TestEnvironment.java)) | Yes | Baseline **ebd3453**: **52** skips, **0** failures — expected on laptops without Docker; CI supplies Postgres service |
-| Surefire `<excludes>` for test classes | Java test run | *(none in current `pom.xml`)* | — | — | If added later, add a row here |
+| pytest markers (`unit`, `integration`, `slow`, …) in [`classifier-service/pytest.ini`](../../classifier-service/pytest.ini) | Discovery | Classification | Selective runs | Yes | **CI alignment:** `core_classifier` runs **full** `pytest tests/ -v`; **`sonar` job** runs a **subset** (`tests/unit`, one regression file, `-m "not integration and not slow"`). Treat as **intentional split** (fast Sonar path vs full PR gate) - if they diverge in failure, investigate before merge |
+| `@EnabledIf` / `@Disabled` on Java tests | Surefire execution | Methods/classes not run when guard fails | Docker / Postgres availability (see [`TestEnvironment`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/TestEnvironment.java)) | Yes | Baseline **ebd3453**: **52** skips, **0** failures - expected on laptops without Docker; CI supplies Postgres service |
+| Surefire `<excludes>` for test classes | Java test run | *(none in current `pom.xml`)* | - | - | If added later, add a row here |
 
 ---
 
@@ -66,14 +66,14 @@ Each row is a mechanism that changes what is **measured**, **analyzed**, or **ru
 
 ## API path literals in tests (inventory summary)
 
-**Default product base:** tests use [`rag-service/src/test/resources/application.properties`](../../rag-service/src/test/resources/application.properties) (`rag.api.product-base-path=/api/v5`). Prefer [`RagApiTestPaths`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/RagApiTestPaths.java) (`path(...)`, `productBasePath()`) for MockMvc URLs so they track that file — already applied across most `interfaces/rest` WebMvc tests.
+**Default product base:** tests use [`rag-service/src/test/resources/application.properties`](../../rag-service/src/test/resources/application.properties) (`rag.api.product-base-path=/api/v5`). Prefer [`RagApiTestPaths`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/RagApiTestPaths.java) (`path(...)`, `productBasePath()`) for MockMvc URLs so they track that file - already applied across most `interfaces/rest` WebMvc tests.
 
 **Alternate base paths:** slices that intentionally override the product path (e.g. `@TestPropertySource(properties = "rag.api.product-base-path=/api/v1")` or `/api/test`) must keep an explicit `PRODUCT_BASE` (or equivalent) per nested class; do **not** use `RagApiTestPaths` there, because it reads the shared classpath `application.properties`, not the Spring `Environment` of that slice.
 
 **Backlog (incremental):**
 
 1. When adding tests, default to `RagApiTestPaths` unless the slice fixes a non-default base path.
-2. Keep CI/env alignment: [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml) sets `NEXT_PUBLIC_RAG_API_PREFIX` — keep defaults consistent when refactoring env blocks.
+2. Keep CI/env alignment: [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml) sets `NEXT_PUBLIC_RAG_API_PREFIX` - keep defaults consistent when refactoring env blocks.
 
 ---
 
@@ -98,11 +98,11 @@ Each row is a mechanism that changes what is **measured**, **analyzed**, or **ru
 | **Project key** | `sergio-tr_rag-spring-ai-ollama` ([`sonar-project.properties`](../../sonar-project.properties)) |
 | **Organization** | `sergio-tr` |
 | **Dashboard** | [SonarCloud project summary](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama) |
-| **Quality gate** | As configured in SonarCloud for the organization (see official docs above). **Record** numeric baseline (coverage, bugs, vulnerabilities, security hotspots) from the dashboard when closing a release — template: [sonar-baseline-record.md](sonar-baseline-record.md). |
+| **Quality gate** | As configured in SonarCloud for the organization (see official docs above). **Record** numeric baseline (coverage, bugs, vulnerabilities, security hotspots) from the dashboard when closing a release - template: [sonar-baseline-record.md](sonar-baseline-record.md). |
 
 **CI workflow:** PR / main DAG → [`ci.yml`](../../.github/workflows/ci.yml) → [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml) job **`sonar`**; optional manual scan → [`sonar.yml`](../../.github/workflows/sonar.yml). Local parity: [../development/sonar-local-analysis.md](../development/sonar-local-analysis.md).
 
-**Fork PR note:** `SONAR_TOKEN` may be missing on forks — the reusable pipeline fails fast if absent; document team policy for required checks.
+**Fork PR note:** `SONAR_TOKEN` may be missing on forks - the reusable pipeline fails fast if absent; document team policy for required checks.
 
 ---
 
@@ -134,7 +134,7 @@ A **literal 0% JaCoCo excludes** goal is **aspirational** with a **single bundle
 2. Prefer **tests first**, then **remove** excludes; run `cd rag-service && ./mvnw clean verify`.
 3. Spot-check `target/site/jacoco/index.html` for the affected package.
 
-**Master roadmap (progressive exclude reduction)** — execution order: (1) thin adapters / small application services with Mockito + paridad Sonar; (2) `@WebMvcTest` for REST surfaces not yet sliced; (3) heavier `application.service` types (`Conversation*`, `ProjectDocument*`, `me/**`) incrementally; (4) pipelines / async / `tool/**` / retriever with mocks and **minimal** refactors; (5) residual DTO–config–JPA policy in this doc + stable `verify`. Several steps are **already satisfied** in tree (e.g. `ConfigProfile*`, `Move*`, `Promote*`, `UserAccountPersistenceAdapter`, `ProjectKnowledgeControllerWebMvcTest`, `ChatMessageApplicationService` + `AfterCommitTaskScheduler`); large globs (`knowledge/**`, `runtime/**`, `tool/**`) stay excluded until a deliberate vertical campaign.
+**Master roadmap (progressive exclude reduction)** - execution order: (1) thin adapters / small application services with Mockito + paridad Sonar; (2) `@WebMvcTest` for REST surfaces not yet sliced; (3) heavier `application.service` types (`Conversation*`, `ProjectDocument*`, `me/**`) incrementally; (4) pipelines / async / `tool/**` / retriever with mocks and **minimal** refactors; (5) residual DTO–config–JPA policy in this doc + stable `verify`. Several steps are **already satisfied** in tree (e.g. `ConfigProfile*`, `Move*`, `Promote*`, `UserAccountPersistenceAdapter`, `ProjectKnowledgeControllerWebMvcTest`, `ChatMessageApplicationService` + `AfterCommitTaskScheduler`); large globs (`knowledge/**`, `runtime/**`, `tool/**`) stay excluded until a deliberate vertical campaign.
 
 ---
 

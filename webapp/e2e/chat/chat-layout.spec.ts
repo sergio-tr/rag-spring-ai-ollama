@@ -7,7 +7,7 @@ import {
 } from "../support/helpers";
 
 test.describe("Chat layout @fullstack @chatRuntime", () => {
-  test("configuration panel toggles centered vs split layout on desktop", async ({ page }) => {
+  test("configuration panel toggles expanded vs split layout on desktop", async ({ page }) => {
     await loginAsSeedUser(page);
     await createAndActivateProject(page, uniqueProjectName("e2e-chat-layout"));
 
@@ -20,7 +20,7 @@ test.describe("Chat layout @fullstack @chatRuntime", () => {
     await expect(workspace).toBeVisible({ timeout: 15_000 });
     await expect(readable).toBeVisible();
 
-    await expect(workspace).toHaveAttribute("data-chat-layout-mode", "centered");
+    await expect(workspace).toHaveAttribute("data-chat-layout-mode", "expanded");
     await expect(page.getByTestId("chat-configuration-side-panel")).toHaveCount(0);
 
     const workspaceBoxClosed = await workspace.boundingBox();
@@ -28,7 +28,7 @@ test.describe("Chat layout @fullstack @chatRuntime", () => {
     expect(workspaceBoxClosed).not.toBeNull();
     expect(readableBoxClosed).not.toBeNull();
     if (workspaceBoxClosed && readableBoxClosed) {
-      expect(readableBoxClosed.width).toBeLessThan(workspaceBoxClosed.width * 0.95);
+      expect(readableBoxClosed.width).toBeGreaterThanOrEqual(workspaceBoxClosed.width * 0.8);
     }
 
     await page.getByTestId("chat-config-trigger").click();
@@ -42,16 +42,17 @@ test.describe("Chat layout @fullstack @chatRuntime", () => {
     expect(panelBoxOpen).not.toBeNull();
     if (readableBoxOpen && panelBoxOpen) {
       expect(readableBoxOpen.x + readableBoxOpen.width).toBeLessThanOrEqual(panelBoxOpen.x + 2);
+      expect(panelBoxOpen.x + panelBoxOpen.width).toBeGreaterThanOrEqual(readableBoxOpen.x + readableBoxOpen.width);
     }
 
     await page.getByTestId("chat-config-trigger").click();
     await expect(panel).toHaveCount(0);
-    await expect(workspace).toHaveAttribute("data-chat-layout-mode", "centered");
+    await expect(workspace).toHaveAttribute("data-chat-layout-mode", "expanded");
 
     const readableBoxReclosed = await readable.boundingBox();
     expect(readableBoxReclosed).not.toBeNull();
     if (workspaceBoxClosed && readableBoxReclosed) {
-      expect(readableBoxReclosed.width).toBeLessThan(workspaceBoxClosed.width * 0.95);
+      expect(readableBoxReclosed.width).toBeGreaterThanOrEqual(workspaceBoxClosed.width * 0.8);
     }
   });
 });

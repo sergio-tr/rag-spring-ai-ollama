@@ -1,9 +1,10 @@
 package com.uniovi.rag.application.service.runtime;
 
-import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.application.service.model.ModelGovernanceService;
 import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationBootstrap;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationStateResolver;
+import com.uniovi.rag.application.service.runtime.memory.ConversationHistoryLoader;
 import com.uniovi.rag.application.service.runtime.memory.ConversationMemoryStrategy;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
@@ -48,6 +49,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -56,9 +59,10 @@ class ExecutionContextFactoryTest {
     @Mock private RuntimeConfigResolutionService runtimeConfigResolutionService;
     @Mock private KnowledgeRuntimeSnapshotSelector knowledgeRuntimeSnapshotSelector;
     @Mock private ChatScopedRagConfigResolver chatScopedRagConfigResolver;
-    @Mock private ModelCatalogPort modelCatalogPort;
+    @Mock private ModelGovernanceService modelGovernanceService;
     @Mock private ClarificationStateResolver clarificationStateResolver;
     @Mock private ConversationMemoryStrategy conversationMemoryStrategy;
+    @Mock private ConversationHistoryLoader conversationHistoryLoader;
     @Mock private ResolvedLlmConfigResolver resolvedLlmConfigResolver;
     @Mock private ResolvedRuntimeConfig resolvedRuntimeConfig;
     @Mock private QueryPlan queryPlan;
@@ -88,14 +92,16 @@ class ExecutionContextFactoryTest {
                                 60_000,
                                 null,
                                 Map.of()));
+        lenient().when(conversationHistoryLoader.loadEligibleHistory(any())).thenReturn(List.of());
         factory =
                 new ExecutionContextFactory(
                         runtimeConfigResolutionService,
                         knowledgeRuntimeSnapshotSelector,
                         chatScopedRagConfigResolver,
-                        modelCatalogPort,
+                        modelGovernanceService,
                         clarificationStateResolver,
                         conversationMemoryStrategy,
+                        conversationHistoryLoader,
                         resolvedLlmConfigResolver,
                         null);
     }
@@ -166,7 +172,7 @@ class ExecutionContextFactoryTest {
                 .thenReturn(null);
         when(clarificationStateResolver.bootstrap(conversationId, "hello"))
                 .thenReturn(new ClarificationBootstrap("hello", false, false, false));
-        when(conversationMemoryStrategy.execute(any(ExecutionContext.class), anyString()))
+        when(conversationMemoryStrategy.executeWithEligibleHistory(any(ExecutionContext.class), anyString(), any()))
                 .thenReturn(
                         new ConversationMemoryExecutionResult(
                                 ConversationMemoryOutcome.DISABLED_BY_CONFIG,
@@ -230,7 +236,7 @@ class ExecutionContextFactoryTest {
                 .thenReturn(KnowledgeSnapshotSelection.empty());
         when(clarificationStateResolver.bootstrap(null, "q"))
                 .thenReturn(new ClarificationBootstrap("q", false, false, false));
-        when(conversationMemoryStrategy.execute(any(ExecutionContext.class), anyString()))
+        when(conversationMemoryStrategy.executeWithEligibleHistory(any(ExecutionContext.class), anyString(), any()))
                 .thenReturn(
                         new ConversationMemoryExecutionResult(
                                 ConversationMemoryOutcome.NO_CONVERSATION_SCOPE,
@@ -289,7 +295,7 @@ class ExecutionContextFactoryTest {
                     .thenReturn(KnowledgeSnapshotSelection.empty());
             when(clarificationStateResolver.bootstrap(null, "q"))
                     .thenReturn(new ClarificationBootstrap("q", false, false, false));
-            when(conversationMemoryStrategy.execute(any(ExecutionContext.class), anyString()))
+            when(conversationMemoryStrategy.executeWithEligibleHistory(any(ExecutionContext.class), anyString(), any()))
                     .thenReturn(
                             new ConversationMemoryExecutionResult(
                                     ConversationMemoryOutcome.NO_CONVERSATION_SCOPE,
@@ -313,7 +319,7 @@ class ExecutionContextFactoryTest {
         when(resolvedRuntimeConfig.effectiveSystemPrompt()).thenReturn("sys");
         when(clarificationStateResolver.bootstrap(null, "q"))
                 .thenReturn(new ClarificationBootstrap("q", false, false, false));
-        when(conversationMemoryStrategy.execute(any(ExecutionContext.class), anyString()))
+        when(conversationMemoryStrategy.executeWithEligibleHistory(any(ExecutionContext.class), anyString(), any()))
                 .thenReturn(
                         new ConversationMemoryExecutionResult(
                                 ConversationMemoryOutcome.NO_CONVERSATION_SCOPE,
@@ -344,7 +350,22 @@ class ExecutionContextFactoryTest {
 
     @Test
     void buildForChatMessage_invalidModelOverride_throwsBadRequest() {
-        when(modelCatalogPort.allowedLlmNamesInGovernance()).thenReturn(Set.of("allowed-only"));
+        when(resolvedLlmConfigResolver.resolve(any(), any(), any()))
+                .thenReturn(
+                        ResolvedLlmConfig.uniform(
+                                LlmProvider.OPENAI_COMPATIBLE,
+                                "http://litellm:4000",
+                                "gpt-oss:20b",
+                                "embed",
+                                "KEY",
+                                null,
+                                0.1,
+                                60_000,
+                                null,
+                                Map.of()));
+        doThrow(new IllegalArgumentException("LLM model is not allowed by governance: unknown-model"))
+                .when(modelGovernanceService)
+                .assertChatModelAllowed(LlmProvider.OPENAI_COMPATIBLE, "unknown-model");
         UUID conversationId = UUID.randomUUID();
 
         assertThatThrownBy(

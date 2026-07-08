@@ -1,4 +1,6 @@
 import type { ConversationDto, ExperimentalPresetCatalogItemDto, RagPresetDto } from "@/types/api";
+import { resolvePresetDisplayName } from "@/features/presets/lib/preset-display";
+import { toProductPresetDisplayName } from "@/lib/product-preset-labels";
 
 /**
  * Matches seeded `Demo_Best` in backend migration `V18__demo_rag_presets.sql`
@@ -6,7 +8,7 @@ import type { ConversationDto, ExperimentalPresetCatalogItemDto, RagPresetDto } 
  */
 export const CHAT_DETERMINISTIC_DEFAULT_PRESET_ID = "cafe0001-0001-4001-8001-000000000003";
 
-/** UUID string always suitable for `<select value>` — never empty / "None". */
+/** UUID string always suitable for `<select value>` - never empty / "None". */
 export function resolveConversationPresetSelectValue(conversation: ConversationDto | undefined): string {
   if (!conversation) return CHAT_DETERMINISTIC_DEFAULT_PRESET_ID;
   const persisted = conversation.presetId?.trim();
@@ -51,7 +53,7 @@ export type PresetSelectLabels = {
   systemSuffix: string;
   /** Configured default id present in schema but not in loaded catalog row yet. */
   recommendedDefault: string;
-  /** Catalog successfully loaded with zero presets — controlled empty state. */
+  /** Catalog successfully loaded with zero presets - controlled empty state. */
   defaultConfiguration: string;
 };
 
@@ -63,7 +65,8 @@ export function resolvePresetSelectLabel(
 ): string {
   const hit = findPresetById(presets, selectValue);
   if (hit) {
-    return hit.system ? `${hit.name} (${labels.systemSuffix})` : hit.name;
+    const displayName = toProductPresetDisplayName(hit.name);
+    return hit.system ? `${displayName} (${labels.systemSuffix})` : displayName;
   }
   const catalogLoadedEmpty = presets !== undefined && presets.length === 0;
   if (catalogLoadedEmpty && selectValue === CHAT_DETERMINISTIC_DEFAULT_PRESET_ID) {
@@ -78,7 +81,7 @@ export function resolvePresetSelectLabel(
  * Rules:
  * - selectedPresetId null/empty -> Recommended Default
  * - product preset id -> product preset name (with system suffix when applicable)
- * - experimental preset id (matches `ExperimentalPresetCatalogItemDto.productPresetId`) -> "P4 — Label"
+ * - experimental preset id (matches `ExperimentalPresetCatalogItemDto.productPresetId`) -> human display name
  * - otherwise -> Unknown preset
  */
 export function resolveChatPresetLabel(
@@ -92,12 +95,13 @@ export function resolveChatPresetLabel(
 
   const p = productPresets?.find((x) => x.id === id);
   if (p) {
-    return p.system ? `${p.name} (${labels.systemSuffix})` : p.name;
+    const displayName = toProductPresetDisplayName(p.name);
+    return p.system ? `${displayName} (${labels.systemSuffix})` : displayName;
   }
 
   const e = experimentalPresets?.find((x) => x.productPresetId === id);
   if (e) {
-    return `${e.code} — ${e.label}`;
+    return resolvePresetDisplayName(e);
   }
 
   const catalogLoadedEmpty =

@@ -110,7 +110,7 @@ public final class ActaFieldAnchorHeuristics {
         return countParticipants || (actaMeetingField && (participants || q.contains("presidente")));
     }
 
-    /** FD-CE-02: corpus-wide exact attendee listing — not acta-scoped clarification. */
+    /** FD-CE-02: corpus-wide exact attendee listing - not acta-scoped clarification. */
     public static boolean isCorpusWideExactAttendeeCountListing(String normalizedText) {
         if (normalizedText == null || normalizedText.isBlank()) {
             return false;
@@ -121,7 +121,11 @@ public final class ActaFieldAnchorHeuristics {
                 && (q.contains("exactamente") || q.matches(".*\\bcon\\s+\\d+\\s+asistentes\\b.*"));
     }
 
-    static boolean isCorpusWideAggregate(String q) {
+    /** Corpus-wide listing / aggregate queries that must not trigger acta-date clarification. */
+    public static boolean isCorpusWideAggregate(String q) {
+        if (q == null || q.isBlank()) {
+            return false;
+        }
         return q.contains("todas las actas")
                 || q.contains("cada acta")
                 || q.contains("cuántas actas")
@@ -130,11 +134,35 @@ public final class ActaFieldAnchorHeuristics {
                 || q.contains("todas las reuniones")
                 || q.contains("cuántas reuniones")
                 || q.contains("cuantas reuniones")
+                || q.contains("qué actas")
+                || q.contains("que actas")
+                || q.contains("cuáles actas")
+                || q.contains("cuales actas")
+                || q.contains("dime qué actas")
+                || q.contains("dime que actas")
+                || q.contains("dime las actas")
+                || q.contains("las actas donde")
+                || q.contains("dime los lugares donde")
+                || q.contains("qué acta tiene más")
+                || q.contains("que acta tiene mas")
+                || q.contains("qué acta tiene menos")
+                || q.contains("que acta tiene menos")
+                || q.contains("en qué acta aparece")
+                || q.contains("en que acta aparece")
+                || q.contains("en cuántas actas aparece")
+                || q.contains("en cuantas actas aparece")
+                || q.contains("en cualquier acta")
+                || q.contains("cualquier acta")
+                || q.contains("en qué reuniones asistió")
+                || q.contains("en que reuniones asistio")
+                || q.contains("en qué reuniones asiste")
+                || q.contains("en que reuniones asiste")
+                || isCorpusWideTopicSummary(q)
                 || isCompoundMonthTopicAttendeeFilter(q)
                 || isCorpusWideExactAttendeeCountListing(q);
     }
 
-    /** FD-FL-03: month + topic + attendee threshold listing — corpus-wide filter, not acta-scoped clarification. */
+    /** FD-FL-03: month + topic + attendee threshold listing - corpus-wide filter, not acta-scoped clarification. */
     public static boolean isCompoundMonthTopicAttendeeFilter(String q) {
         if (q == null || q.isBlank()) {
             return false;
@@ -144,26 +172,114 @@ public final class ActaFieldAnchorHeuristics {
                 q.contains("videovigilancia")
                         || q.contains("vigilancia")
                         || q.contains("cámaras")
-                        || q.contains("camaras");
+                        || q.contains("camaras")
+                        || q.contains("temas")
+                        || q.contains("tema ")
+                        || q.contains("discutieron")
+                        || q.contains("trataron")
+                        || q.contains("hablaron");
         boolean attendeeThreshold =
                 q.contains("asistentes")
-                        && (q.contains("más de") || q.contains("mas de") || q.contains("more than"));
+                        && (q.contains("más de")
+                                || q.contains("mas de")
+                                || q.contains("more than")
+                                || q.contains("contaron con más")
+                                || q.contains("contaron con mas"));
         boolean reunionListing =
                 q.contains("reuniones")
                         || q.contains("qué reuniones")
                         || q.contains("que reuniones")
-                        || q.contains("celebradas");
+                        || q.contains("celebradas")
+                        || q.contains("discutieron");
         return month && topic && attendeeThreshold && reunionListing;
+    }
+
+    /** Undated topic summary across the corpus (e.g. "resume calefacción"). */
+    static boolean isCorpusWideTopicSummary(String q) {
+        boolean asksSummary = q.contains("resume") || q.contains("resum");
+        boolean hasTopic =
+                q.contains("calefacción")
+                        || q.contains("calefaccion")
+                        || q.contains("climatización")
+                        || q.contains("climatizacion")
+                        || q.contains("videovigilancia")
+                        || q.contains("ascensor")
+                        || q.contains("convivencia")
+                        || q.contains("terrazas")
+                        || q.contains("zonas comunes");
+        boolean corpusScope =
+                q.contains("todas las actas")
+                        || q.contains("cada acta")
+                        || q.contains("en todas")
+                        || !hasExplicitDateInText(q);
+        return asksSummary && hasTopic && corpusScope && !hasExplicitDateInText(q);
     }
 
     public static boolean hasExplicitDateInText(String q) {
         return q.matches(".*\\b\\d{4}-\\d{2}-\\d{2}\\b.*")
-                || q.matches(".*\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{4}\\b.*")
-                || q.matches(".*\\b\\d{1,2}\\s+de\\s+\\p{L}+\\s+de\\s+\\d{4}\\b.*")
+                || ActaSlashDateSupport.hasSlashOrDashDateInText(q)
+                || q.matches(".*\\b\\d{1,2}\\s+de\\s+\\p{L}+\\s+de[l]?\\s+\\d{4}\\b.*")
                 || q.matches(".*\\baño\\s+(del\\s+)?\\d{4}\\b.*")
                 || q.matches(".*\\bdel\\s+año\\s+\\d{4}\\b.*")
                 || q.matches(".*\\ben\\s+20\\d{2}\\b.*")
                 || hasMonthNameInText(q);
+    }
+
+    /** True when the query names a canonical uploaded acta (e.g. {@code ACTA 6.pdf} or {@code acta 3}). */
+    public static boolean hasExplicitActaDocumentReference(String normalizedText) {
+        return ActaDocumentAnchorSupport.resolveActaNumber(normalizedText).isPresent();
+    }
+
+    /**
+     * Filename-anchored scalar field extraction (date, president, attendee count, end time) should use
+     * retrieval over deterministic tools or function calling on Demo Best.
+     */
+    public static boolean isExplicitActaFilenameFieldExtractionQuery(QueryPlan plan) {
+        if (plan == null) {
+            return false;
+        }
+        String text =
+                firstNonBlank(plan.normalizedQueryText(), plan.rewrittenQueryText(), plan.rawUserQuery());
+        if (!hasExplicitActaDocumentReference(text)) {
+            return false;
+        }
+        String q = text.toLowerCase(Locale.ROOT);
+        boolean attendeeCount =
+                (q.contains("cuántos") || q.contains("cuantos") || q.contains("cuántas") || q.contains("cuantas"))
+                        && (q.contains("propietarios")
+                                || q.contains("asistentes")
+                                || q.contains("participantes"));
+        return q.contains("fecha")
+                || q.contains("lugar")
+                || q.contains("presid")
+                || q.contains("secretari")
+                || q.contains("duración")
+                || q.contains("duracion")
+                || q.contains("finaliz")
+                || q.contains("hora de")
+                || attendeeCount;
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
+    }
+
+    /** Slash-date resumen (e.g. hazme un resumen del 25/02/26) must not trigger acta-anchor clarification. */
+    public static boolean isDatedSummaryRequest(String normalizedText) {
+        if (normalizedText == null || normalizedText.isBlank()) {
+            return false;
+        }
+        String q = normalizedText.toLowerCase(Locale.ROOT);
+        boolean asksSummary = q.contains("resume") || q.contains("resum");
+        return asksSummary && hasExplicitDateInText(q);
     }
 
     static boolean hasMonthNameInText(String q) {

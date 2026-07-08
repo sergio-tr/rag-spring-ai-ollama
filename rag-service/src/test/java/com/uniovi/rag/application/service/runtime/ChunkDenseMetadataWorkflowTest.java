@@ -28,9 +28,11 @@ import com.uniovi.rag.domain.runtime.retrieval.CuratedContextSet;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvoker;
 import com.uniovi.rag.application.service.runtime.llm.RagLlmChatInvokerTestSupport;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder;
 import org.springframework.ai.chat.client.ChatClient;
 
 import java.util.List;
@@ -54,6 +56,11 @@ import java.util.LinkedHashMap;
 import org.mockito.Mockito;
 
 class ChunkDenseMetadataWorkflowTest {
+
+    @BeforeEach
+    void clearToolEvidenceHolder() {
+        DeterministicToolEvidenceHolder.clear();
+    }
 
     @Test
     void execute_whenAdvisorPackedContextPresent_skipsAdvancedRetrieval() {
@@ -148,6 +155,49 @@ class ChunkDenseMetadataWorkflowTest {
     }
 
     @Test
+    void T_M5_BE_emptyContext_docBoundQuestion_abstainsEvenWithStaleToolEvidence() {
+        DeterministicToolEvidenceHolder.set(
+                new DeterministicToolEvidenceHolder.Evidence(
+                        List.of(), "stale tool context from another request", true));
+
+        RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("ANS");
+        AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
+        when(pipeline.retrieve(any(ExecutionContext.class), any(QueryPlan.class), eq("ChunkDenseMetadataWorkflow")))
+                .thenReturn(
+                        new CuratedContextSet(
+                                List.of(),
+                                "",
+                                new CompressionOutcome(0, 0, 0, List.of()),
+                                List.of(),
+                                new RetrievalDiagnostics(
+                                        RetrievalMode.DENSE_ONLY,
+                                        Optional.empty(),
+                                        "",
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        false,
+                                        List.of(),
+                                        List.of(),
+                                        Optional.empty(), 0, 0, false, 0),
+                                List.of(),
+                                List.of(new ExecutionStageTrace("retrieval", 1, null, ""))));
+
+        ChunkDenseMetadataWorkflow wf = new ChunkDenseMetadataWorkflow(llmChatInvoker, pipeline, null);
+        ExecutionContext ctx = minimalCtx(Optional.empty(), "hazme un resumen del acta del 25 de febrero de 2025");
+        RagExecutionResult out = wf.execute(ctx);
+
+        assertThat(out.answerText()).isEqualTo(RuntimeAnswerPrompts.INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_ES);
+        verify(llmChatInvoker, never()).invoke(any(), anyString(), anyString());
+    }
+
+    @Test
     void execute_question25Feb2026_withOnly2025Source_abstainsWithoutCallingLlm() {
         RagLlmChatInvoker llmChatInvoker = RagLlmChatInvokerTestSupport.stubContent("ANS");
         clearInvocations(llmChatInvoker);
@@ -159,7 +209,7 @@ class ChunkDenseMetadataWorkflowTest {
                                 List.of(
                                         dummyCandidateWithFilename(
                                                 "ACTA2.pdf", "Fecha: 25 de febrero de 2025. Presidente: Carlos.")),
-                                "ACTA2.pdf — Fecha: 25 de febrero de 2025",
+                                "ACTA2.pdf - Fecha: 25 de febrero de 2025",
                                 new CompressionOutcome(1, 1, 0, List.of()),
                                 List.of(),
                                 new RetrievalDiagnostics(
@@ -208,7 +258,7 @@ class ChunkDenseMetadataWorkflowTest {
                                 List.of(
                                         dummyCandidateWithFilename("ACTA 5.pdf", "Fecha: 25 de febrero de 2026"),
                                         dummyCandidateWithFilename("ACTA 3.pdf", "Fecha: 25/08/2025")),
-                                "ACTA 5.pdf — Fecha: 25 de febrero de 2026\nACTA 3.pdf — Fecha: 25/08/2025",
+                                "ACTA 5.pdf - Fecha: 25 de febrero de 2026\nACTA 3.pdf - Fecha: 25/08/2025",
                                 new CompressionOutcome(1, 1, 0, List.of()),
                                 List.of(),
                                 new RetrievalDiagnostics(
@@ -303,7 +353,7 @@ class ChunkDenseMetadataWorkflowTest {
                                                 "acta-24-02-2025.txt",
                                                 "Fecha: 24 de febrero de 2025. Presidente: Juan Pérez García.",
                                                 "2025-02-24")),
-                                "acta-24-02-2025.txt — Fecha: 24 de febrero de 2025",
+                                "acta-24-02-2025.txt - Fecha: 24 de febrero de 2025",
                                 new CompressionOutcome(1, 1, 0, List.of()),
                                 List.of(),
                                 new RetrievalDiagnostics(

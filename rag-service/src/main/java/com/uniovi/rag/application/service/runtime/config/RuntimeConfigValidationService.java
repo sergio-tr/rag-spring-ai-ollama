@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.config;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.config.ConfigResolverService;
@@ -21,6 +22,10 @@ import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateRequest;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeSnapshotCapabilitiesDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidationIssueDto;
+import com.uniovi.rag.application.service.chat.ChatRuntimeCompatibilitySupport;
+import com.uniovi.rag.domain.chat.PresetDraftCompatibilityResult;
+import com.uniovi.rag.domain.chat.PresetValidationIssue;
+import com.uniovi.rag.domain.chat.RuntimePresetIndexRequirements;
 import com.uniovi.rag.application.service.runtime.config.MaterializationAwareSnapshotResolver;
 import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
 import java.util.ArrayList;
@@ -103,6 +108,28 @@ public class RuntimeConfigValidationService {
                 userId, projectId, null, presetOpt, overrides != null ? overrides : Map.of(), "runtime_config_validate_draft");
     }
 
+    public PresetDraftCompatibilityResult assessPresetDraft(UUID userId, UUID projectId, UUID presetId) {
+        RuntimeConfigValidateResponse vr = validateDraft(userId, projectId, presetId, Map.of());
+        if (vr == null) {
+            return PresetDraftCompatibilityResult.unavailable();
+        }
+        RuntimeIndexCompatibilityDto idx = vr.indexCompatibility();
+        boolean indexOk = idx == null || idx.compatibleWithPreset();
+        RuntimePresetIndexRequirements requirements = null;
+        if (idx != null && idx.presetIndexRequirements() != null) {
+            RuntimePresetIndexRequirementsDto req = idx.presetIndexRequirements();
+            requirements =
+                    new RuntimePresetIndexRequirements(
+                            req.requiredMaterializationStrategy(), req.requiresMetadataSupport());
+        }
+        List<PresetValidationIssue> blocking =
+                ChatRuntimeCompatibilitySupport.blockingIssues(vr).stream()
+                        .map(issue -> new PresetValidationIssue(issue.code(), issue.message()))
+                        .toList();
+        String compatibilityStatus = idx != null ? idx.compatibilityStatus() : null;
+        return new PresetDraftCompatibilityResult(requirements, indexOk, compatibilityStatus, blocking);
+    }
+
     private RuntimeConfigValidateResponse validateForProject(
             UUID userId,
             UUID projectId,
@@ -171,7 +198,9 @@ public class RuntimeConfigValidationService {
                 new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false, null, null, true, "UNKNOWN");
         boolean requiresReindex = false;
         if (resolved.toRagConfig() != null) {
-            effectiveConfig = objectMapper.convertValue(resolved.toRagConfig(), Map.class);
+            effectiveConfig =
+                    objectMapper.convertValue(
+                            resolved.toRagConfig(), new TypeReference<Map<String, Object>>() {});
         }
 
         RagConfig rag = resolved.toRagConfig();

@@ -1,8 +1,14 @@
 package com.uniovi.rag.interfaces.rest;
 
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusApplicationService;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusGoldAlignmentService;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusIndexPrepareResult;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusIndexService;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusReadinessService;
+import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
+import com.uniovi.rag.application.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
+import com.uniovi.rag.application.service.evaluation.preset.LabPresetRunGroupKey;
+import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusGoldAlignmentDto;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusAttachFromProjectRequest;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusCreateRequest;
 import com.uniovi.rag.interfaces.rest.dto.evaluation.EvaluationCorpusDocumentsUploadResponseDto;
@@ -38,14 +44,29 @@ public class LabEvaluationCorpusController {
     private final EvaluationCorpusApplicationService evaluationCorpusApplicationService;
     private final EvaluationCorpusReadinessService evaluationCorpusReadinessService;
     private final EvaluationCorpusIndexService evaluationCorpusIndexService;
+    private final EvaluationCorpusGoldAlignmentService evaluationCorpusGoldAlignmentService;
 
     public LabEvaluationCorpusController(
             EvaluationCorpusApplicationService evaluationCorpusApplicationService,
             EvaluationCorpusReadinessService evaluationCorpusReadinessService,
-            EvaluationCorpusIndexService evaluationCorpusIndexService) {
+            EvaluationCorpusIndexService evaluationCorpusIndexService,
+            EvaluationCorpusGoldAlignmentService evaluationCorpusGoldAlignmentService) {
         this.evaluationCorpusApplicationService = evaluationCorpusApplicationService;
         this.evaluationCorpusReadinessService = evaluationCorpusReadinessService;
         this.evaluationCorpusIndexService = evaluationCorpusIndexService;
+        this.evaluationCorpusGoldAlignmentService = evaluationCorpusGoldAlignmentService;
+    }
+
+    @PostMapping("/align-from-reference-bundle")
+    public EvaluationCorpusGoldAlignmentDto alignFromReferenceBundle(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @RequestParam(name = "replaceExisting", defaultValue = "true") boolean replaceExisting) {
+        return evaluationCorpusGoldAlignmentService.alignFromReferenceBundle(requireUserId(principal), replaceExisting);
+    }
+
+    @GetMapping("/align-from-reference-bundle/preview")
+    public EvaluationCorpusGoldAlignmentDto previewGoldAlignment(@AuthenticationPrincipal RagPrincipal principal) {
+        return evaluationCorpusGoldAlignmentService.previewAlignment(requireUserId(principal));
     }
 
     @PostMapping
@@ -70,10 +91,67 @@ public class LabEvaluationCorpusController {
 
     @PostMapping("/{corpusId}/prepare-index")
     public EvaluationCorpusReadinessDto prepareIndex(
-            @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID corpusId) {
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable UUID corpusId,
+            @RequestParam(name = "embeddingModelId", required = false) String embeddingModelId,
+            @RequestParam(name = "presetGroupKey", required = false) String presetGroupKey) {
         UUID userId = requireUserId(principal);
-        evaluationCorpusIndexService.prepareIndex(userId, corpusId);
-        return evaluationCorpusReadinessService.getReadiness(userId, corpusId);
+        EvaluationCorpusIndexPrepareResult prepareResult;
+        LabPresetRunGroupKey groupKey = parsePresetGroupKey(presetGroupKey);
+        if (groupKey == LabPresetRunGroupKey.HYBRID_METADATA) {
+            prepareResult =
+                    evaluationCorpusIndexService.prepareForPresetRequirements(
+                            userId,
+                            corpusId,
+                            LabPresetRunGroupKey.HYBRID_METADATA,
+                            new ExperimentalPresetCanonicalCatalog.IndexRequirements(
+                                    ExperimentalPresetCanonicalCatalog.RequiredMaterialization.HYBRID, true),
+                            embeddingModelId != null && !embeddingModelId.isBlank() ? embeddingModelId.trim() : null,
+                            true);
+        } else if (embeddingModelId != null && !embeddingModelId.isBlank()) {
+            prepareResult =
+                    evaluationCorpusIndexService.prepareForPresetRequirements(
+                            userId,
+                            corpusId,
+                            LabPresetRunGroupKey.CHUNK_LEVEL,
+                            ExperimentalPresetCanonicalCatalog.IndexRequirements.none(),
+                            embeddingModelId.trim(),
+                            true);
+        } else {
+            prepareResult = evaluationCorpusIndexService.prepareDefaultIndex(userId, corpusId);
+        }
+        if (!prepareResult.succeeded()) {
+            String code =
+                    prepareResult.reasonCode() != null
+                            ? prepareResult.reasonCode()
+                            : LabCorpusReasonCodes.REINDEX_REQUIRED;
+            HttpStatus status =
+                    LabCorpusReasonCodes.RUNTIME_CONFIG_SNAPSHOT_UNAVAILABLE.equals(code)
+                            ? HttpStatus.UNPROCESSABLE_ENTITY
+                            : HttpStatus.BAD_REQUEST;
+            throw new ResponseStatusException(status, code);
+        }
+        EvaluationCorpusReadinessDto readiness = evaluationCorpusReadinessService.getReadiness(userId, corpusId);
+        UUID preparedSnapshotId = prepareResult.knowledgeIndexSnapshotId();
+        if (preparedSnapshotId == null) {
+            return readiness;
+        }
+        return new EvaluationCorpusReadinessDto(
+                readiness.corpusId(),
+                readiness.indexProjectId(),
+                readiness.documentCount(),
+                readiness.readyCount(),
+                readiness.storageReadyCount(),
+                readiness.processingCount(),
+                readiness.failedCount(),
+                readiness.primaryBlocker(),
+                readiness.primaryBlockerMessage(),
+                preparedSnapshotId,
+                readiness.reindexRequired(),
+                readiness.snapshotBlocker(),
+                readiness.snapshotBlockerDetailCode(),
+                List.of(preparedSnapshotId),
+                readiness.runnable());
     }
 
     /**
@@ -142,5 +220,16 @@ public class LabEvaluationCorpusController {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         }
         return principal.userId();
+    }
+
+    private static LabPresetRunGroupKey parsePresetGroupKey(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return LabPresetRunGroupKey.valueOf(raw.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid presetGroupKey");
+        }
     }
 }

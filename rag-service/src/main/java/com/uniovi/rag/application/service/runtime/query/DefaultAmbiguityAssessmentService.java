@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.query;
 
+import com.uniovi.rag.application.service.runtime.optimization.DeterministicQueryRewriteShortcuts;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.query.AmbiguityAssessment;
 import com.uniovi.rag.domain.runtime.query.AmbiguityStatus;
@@ -31,10 +32,26 @@ public class DefaultAmbiguityAssessmentService implements AmbiguityAssessmentSer
         List<String> missing = new ArrayList<>();
 
         String qLower = normalized.normalizedText().toLowerCase(Locale.ROOT);
+
+        Optional<IncompleteQueryHeuristics.Signal> incomplete =
+                IncompleteQueryHeuristics.detect(normalized.normalizedText());
+        if (incomplete.isPresent()) {
+            return IncompleteQueryHeuristics.toAmbiguityAssessment(incomplete.get());
+        }
+
+        if (ActaFieldAnchorHeuristics.isCorpusWideAggregate(qLower)) {
+            return AmbiguityAssessment.sufficient();
+        }
+        if (DeterministicQueryRewriteShortcuts.matches(normalized.normalizedText()).isPresent()) {
+            return AmbiguityAssessment.sufficient();
+        }
         if (ActaFieldAnchorHeuristics.isCompoundMonthTopicAttendeeFilter(qLower)) {
             return AmbiguityAssessment.sufficient();
         }
         if (ActaFieldAnchorHeuristics.isCorpusWideExactAttendeeCountListing(qLower)) {
+            return AmbiguityAssessment.sufficient();
+        }
+        if (ActaFieldAnchorHeuristics.isDatedSummaryRequest(qLower)) {
             return AmbiguityAssessment.sufficient();
         }
 
@@ -43,6 +60,20 @@ public class DefaultAmbiguityAssessmentService implements AmbiguityAssessmentSer
             missing.add("time_reference");
             reasons.add("Missing acta/meeting date for scoped field lookup");
             return new AmbiguityAssessment(AmbiguityStatus.MISSING_INFORMATION, reasons, missing);
+        }
+
+        // memory-expanded planning input may carry ISO dates from structured anchors.
+        String effectiveLower = normalized.normalizedText().toLowerCase(Locale.ROOT);
+        boolean asksPresident =
+                effectiveLower.contains("presidente")
+                        || effectiveLower.contains("presidió")
+                        || effectiveLower.contains("presidio");
+        boolean asksWho = effectiveLower.contains("quién") || effectiveLower.contains("quien");
+        if (asksPresident
+                && asksWho
+                && ActaFieldAnchorHeuristics.hasExplicitDateInText(effectiveLower)
+                && !ActaFieldAnchorHeuristics.isCorpusWideAggregate(effectiveLower)) {
+            return AmbiguityAssessment.sufficient();
         }
 
         // Conflict signal: classifier (when OK) vs rewrite targetAction (when present)
@@ -69,16 +100,16 @@ public class DefaultAmbiguityAssessmentService implements AmbiguityAssessmentSer
                 (entities != null && !entities.dates().isEmpty())
                         || ActaFieldAnchorHeuristics.hasExplicitDateInText(q)
                         || q.contains("last") || q.contains("últim") || q.contains("next") || q.contains("próxim");
-        if ((asksSummary || asksCompare) && !hasTemporal) {
+        if ((asksSummary || asksCompare) && !hasTemporal && !ActaFieldAnchorHeuristics.isCorpusWideAggregate(q)) {
             missing.add("time_reference");
             reasons.add("Missing temporal anchor for summary/compare");
             return new AmbiguityAssessment(AmbiguityStatus.MISSING_INFORMATION, reasons, missing);
         }
 
-        boolean asksPresident =
-                q.contains("presidente") || q.contains("presidió") || q.contains("presidio") || q.contains("presidió");
-        boolean asksWho = q.contains("quién") || q.contains("quien");
-        if (asksPresident && asksWho && !hasTemporal && !ActaFieldAnchorHeuristics.isCorpusWideAggregate(q)) {
+        boolean asksPresidentLate =
+                q.contains("presidente") || q.contains("presidió") || q.contains("presidio");
+        boolean asksWhoLate = q.contains("quién") || q.contains("quien");
+        if (asksPresidentLate && asksWhoLate && !hasTemporal && !ActaFieldAnchorHeuristics.isCorpusWideAggregate(q)) {
             missing.add("time_reference");
             reasons.add("Missing date/meeting for president lookup");
             return new AmbiguityAssessment(AmbiguityStatus.MISSING_INFORMATION, reasons, missing);

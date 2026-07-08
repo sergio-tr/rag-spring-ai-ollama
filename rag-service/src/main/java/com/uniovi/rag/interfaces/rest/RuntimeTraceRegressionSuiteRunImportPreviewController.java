@@ -15,7 +15,7 @@ import java.util.Optional;
 import java.util.Objects;
 
 /**
- * P45: synchronous {@code POST} run ZIP import preview — delegates only to {@link RuntimeTraceRegressionSuiteRunImportPreviewService}.
+ * P45: synchronous {@code POST} run ZIP import preview - delegates only to {@link RuntimeTraceRegressionSuiteRunImportPreviewService}.
  */
 @RestController
 @RequestMapping("${rag.api.product-base-path}")

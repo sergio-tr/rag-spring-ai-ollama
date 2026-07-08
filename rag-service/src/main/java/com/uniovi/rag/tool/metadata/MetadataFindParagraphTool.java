@@ -114,7 +114,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
         String answer = generateEnhancedParagraphAnswer(query, rankedResults, clusters);
         log().info("Generated find paragraph answer for query: {} with {} paragraphs in {} clusters", 
                    query, results.size(), clusters.size());
-        
+        publishMatchedMinutesContext(relevantMinutes, true);
         return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
@@ -379,11 +379,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
             """, query != null ? query : "", results.size(), resultsText);
         
         try {
-            String response = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content();
+            String response = getLLMResponseCached("metadata-find-paragraph", prompt).strip();
             
             if (response != null && !response.trim().isEmpty()) {
                 return response.trim();

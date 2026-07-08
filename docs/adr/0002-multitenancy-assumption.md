@@ -1,4 +1,4 @@
-# ADR 0002 — User/project isolation (single database); not SaaS-grade multi-tenancy
+# ADR 0002 - User/project isolation (single database); not SaaS-grade multi-tenancy
 
 ## Status
 
@@ -20,7 +20,7 @@ The platform serves multiple **users** with **projects**, **documents**, and **c
    Role **ADMIN** can manage global policies (e.g. allowlist) via product admin routes under `{product}/admin/**`. That is **role-based** access, not a second tenant dimension in the data model.
 
 4. **Configuration resolution**  
-   Effective RAG parameters are computed from system → user → project layers (see [DATA_MODEL.md — Section 6](../architecture/DATA_MODEL.md#6-active-configuration-resolution)); this remains **per authenticated user and owned project**, consistent with the isolation above.
+   Effective RAG parameters are computed from system → user → project layers (see [DATA_MODEL.md - Section 6](../architecture/DATA_MODEL.md#6-active-configuration-resolution)); this remains **per authenticated user and owned project**, consistent with the isolation above.
 
 ### Preferred terminology (documentation and READMEs)
 

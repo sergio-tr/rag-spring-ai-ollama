@@ -2,14 +2,23 @@ package com.uniovi.rag.tool.metadata;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.application.config.MetadataConfigurablePromptFormatter;
 import com.uniovi.rag.domain.model.Minute;
+import com.uniovi.rag.domain.config.prompt.ConfigurablePromptGroup;
 import com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures;
+import com.uniovi.rag.domain.runtime.RagSnapshotContextHolder;
+import com.uniovi.rag.application.service.evaluation.corpus.EvaluationGoldCorpusFilenameSupport;
 import com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityService;
 import com.uniovi.rag.application.service.runtime.document.extraction.DocumentContentExtractor;
 import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
+import com.uniovi.rag.application.service.runtime.advisor.MetadataToolContextAssembler;
+import com.uniovi.rag.application.service.runtime.observability.RagToolTimingTelemetry;
+import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder;
 import com.uniovi.rag.tool.AbstractTool;
 import com.uniovi.rag.tool.ToolResult;
 import com.uniovi.rag.util.DateParsingSupport;
+import com.uniovi.rag.util.NerDateFieldSupport;
 import com.uniovi.rag.util.RegexSafety;
 import java.text.Normalizer;
 import java.time.LocalDate;
@@ -96,6 +105,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
     private final MetadataLlmResponseCacheService llmResponseCache;
 
+    private MetadataConfigurablePromptFormatter metadataPromptFormatter;
+
     /** Spring-injected proxy so {@code @Cacheable} methods are not invoked via {@code this} (self-invocation). */
     private AbstractMetadataTool cacheableSelf;
 
@@ -109,6 +120,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     @Autowired
+    public void setMetadataPromptFormatter(@Lazy MetadataConfigurablePromptFormatter metadataPromptFormatter) {
+        this.metadataPromptFormatter = metadataPromptFormatter;
+    }
+
+    @Autowired
     public void setCacheableSelf(@Lazy AbstractMetadataTool cacheableSelf) {
         this.cacheableSelf = cacheableSelf;
     }
@@ -116,6 +132,48 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     /** Used by subclasses when calling {@code @Cacheable} methods to avoid self-invocation. */
     protected AbstractMetadataTool cacheable() {
         return cacheableSelf != null ? cacheableSelf : this;
+    }
+
+    /** Publishes matched actas for scoped LLM context assembly on hybrid tool+retrieval paths. */
+    protected void publishMatchedMinutesContext(List<Minute> minutes, boolean highConfidence) {
+        if (minutes == null || minutes.isEmpty()) {
+            return;
+        }
+        MetadataToolContextAssembler assembler = new MetadataToolContextAssembler();
+        String context = assembler.assembleFromMinutes(minutes);
+        DeterministicToolEvidenceHolder.set(
+                new DeterministicToolEvidenceHolder.Evidence(List.copyOf(minutes), context, highConfidence));
+    }
+
+    private String filterAndListPrompt(String query, String metadataJson) {
+        if (metadataPromptFormatter != null) {
+            return metadataPromptFormatter.filterAndListPrompt(query, metadataJson);
+        }
+        return String.format(
+                ConfigurablePromptGroup.METADATA_FILTER_AND_LIST.defaultContent(), query, metadataJson);
+    }
+
+    private String booleanQueryPrompt(
+            String query,
+            String date,
+            String place,
+            String topics,
+            String decisions,
+            String summary,
+            String agenda) {
+        if (metadataPromptFormatter != null) {
+            return metadataPromptFormatter.booleanQueryPrompt(
+                    query, date, place, topics, decisions, summary, agenda);
+        }
+        return String.format(
+                ConfigurablePromptGroup.METADATA_BOOLEAN_QUERY.defaultContent(),
+                query,
+                date,
+                place,
+                topics,
+                decisions,
+                summary,
+                agenda);
     }
 
     private static String nz(String value) {
@@ -154,12 +212,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     """, String.join(", ", terms), doc.getMetadata().toString());
 
                 try {
-                    String result = chatClient
-                            .prompt()
-                            .user(prompt)
-                            .call()
-                            .content()
-                            .strip();
+                    String result = getLLMResponseCached("metadata-enrichment", prompt);
 
                     // Use validateLLMFilterResponse for consistent validation
                     Boolean validated = validateLLMFilterResponse(result, "NER-based metadata matching");
@@ -231,12 +284,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             """, String.join(", ", keywords), content);
 
         try {
-            String result = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip();
+            String result = getLLMResponseCached("metadata-enrichment", prompt);
 
             // Use validateLLMFilterResponse for consistent validation
             Boolean validated = validateLLMFilterResponse(result, "semantic content matching");
@@ -254,33 +302,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * SOLUTION 3.1: Added robust validation and fallback to avoid false negatives.
      */
     protected boolean semanticallyMatchesMetadata(Document doc, String query) {
-        String prompt = String.format("""
-            You are a metadata matching system. Analyze if document metadata semantically matches a user query.
-            
-            User query (may be in any language):
-            "%s"
-            
-            Document metadata (values may be in any language):
-            %s
-            
-            Task: Determine if this document's metadata semantically matches the intent of the query.
-            
-            Matching criteria:
-            - Consider semantic meaning, not just exact word matches
-            - Consider all metadata fields and their semantic meaning
-            - Match regardless of exact wording or language
-            - If query mentions dates, people, topics, etc., check if metadata contains relevant information
-            
-            Respond with ONLY one word: YES or NO.
-            Do not include any explanation or additional text.
-            """, query, doc.getMetadata().toString());
+        String prompt = filterAndListPrompt(query, doc.getMetadata().toString());
 
         try {
-            String result = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content();
+            String result = getLLMResponseCached("metadata-semantic-filter", prompt);
             
             Boolean validated = validateLLMFilterResponse(result, "semanticallyMatchesMetadata");
             
@@ -293,49 +318,72 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
     
     /**
-     * Validates LLM filter response (yes/no/unknown). Delegates to parent's interpretLLMYesNoResponse.
+     * Validates LLM filter response (yes/no/unknown) via provider-aware metadata secondary LLM.
+     * Never uses the Spring default {@code ChatClient} (Ollama) under OPENAI_COMPATIBLE.
      */
     private Boolean validateLLMFilterResponse(String response, String context) {
-        return interpretLLMYesNoResponse(response, context);
+        if (response == null || response.trim().isEmpty()) {
+            log().warn("Empty LLM response in {}", context);
+            return null;
+        }
+        String operation =
+                context != null && context.toLowerCase(Locale.ROOT).contains("topic")
+                        ? "metadata-topic-filter"
+                        : "metadata-yes-no-filter";
+        String prompt =
+                String.format(
+                        """
+            Context: %s
+
+            The LLM generated this response: "%s"
+
+            Task: Interpret this response as a boolean answer.
+            - If it means YES/TRUE/POSITIVE/MATCH/RELEVANT, respond with: YES
+            - If it means NO/FALSE/NEGATIVE/NO_MATCH/IRRELEVANT, respond with: NO
+            - If it's UNCLEAR/AMBIGUOUS/UNCERTAIN, respond with: UNKNOWN
+
+            Consider semantic meaning, not just exact words.
+            Respond with ONLY one word: YES, NO, or UNKNOWN.
+            """,
+                        context,
+                        response);
+        try {
+            String interpretation = getLLMResponseCached(operation, prompt);
+            return parseYesNoUnknownInterpretation(interpretation, context, response);
+        } catch (Exception e) {
+            log().warn("Error interpreting LLM yes/no response in {}", context, e);
+            return null;
+        }
+    }
+
+    private Boolean parseYesNoUnknownInterpretation(String interpretation, String context, String originalResponse) {
+        if (interpretation == null || interpretation.isBlank()) {
+            return null;
+        }
+        String upper = interpretation.strip().toUpperCase(Locale.ROOT);
+        if (upper.contains("YES")) {
+            return true;
+        }
+        if (upper.contains("NO")) {
+            return false;
+        }
+        log().debug("LLM interpreted response in {} as UNKNOWN: '{}'", context, originalResponse);
+        return null;
     }
 
     /**
      * Checks if minute metadata semantically matches the query.
      */
     protected boolean semanticallyMatchesMinute(Minute minute, String query) {
-        String prompt = String.format("""
-            You are a meeting metadata matching system. Analyze if meeting metadata semantically matches a user query.
-            
-            User query (may be in any language):
-            "%s"
-            
-            Meeting metadata (values may be in any language):
-            Date: %s
-            Place: %s
-            Topics: %s
-            Decisions: %s
-            Summary: %s
-            Agenda: %s
-            
-            Task: Determine if this meeting metadata semantically matches the intent of the query.
-            
-            Matching criteria:
-            - Consider semantic meaning, not just exact word matches
-            - Consider all fields and their semantic meaning
-            - Match regardless of exact wording or language
-            - If query mentions dates, people, topics, etc., check if metadata contains relevant information
-            
-            Respond with ONLY one word: YES or NO.
-            Do not include any explanation or additional text.
-            """,
-            query,
-            nz(minute.date()),
-            nz(minute.place()),
-            nzJoin(minute.topics(), ", "),
-            nzJoin(minute.decisions(), ", "),
-            nz(minute.summary()),
-            minute.agenda() != null ? minute.agenda().toString() : PLACEHOLDER_UNKNOWN
-        );
+        String prompt =
+                booleanQueryPrompt(
+                        query,
+                        nz(minute.date()),
+                        nz(minute.place()),
+                        nzJoin(minute.topics(), ", "),
+                        nzJoin(minute.decisions(), ", "),
+                        nz(minute.summary()),
+                        minute.agenda() != null ? minute.agenda().toString() : PLACEHOLDER_UNKNOWN);
 
         try {
             String result = getLLMResponseCached(prompt);
@@ -654,12 +702,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         );
 
         try {
-            String result = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip();
+            String result = getLLMResponseCached("metadata-enrichment", prompt);
             
             // Use validateLLMFilterResponse for consistent validation
             Boolean validated = validateLLMFilterResponse(result, "minute matching with NER");
@@ -723,12 +766,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 Respond with ONLY one word: YES if at least one match is found, NO otherwise.
                 """, String.join(", ", nerAgendaItems), String.join(", ", minuteAgendaItems));
             
-            String result = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip();
+            String result = getLLMResponseCached("metadata-enrichment", prompt);
             
             // Use validateLLMFilterResponse for consistent validation
             Boolean validated = validateLLMFilterResponse(result, "agenda items matching");
@@ -805,12 +843,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 Respond with ONLY one word: YES if at least one match is found, NO otherwise.
                 """, String.join(", ", nerEntityList), String.join(", ", minuteEntityList));
             
-            String result = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip();
+            String result = getLLMResponseCached("metadata-enrichment", prompt);
             
             // Use validateLLMFilterResponse for consistent validation
             Boolean validated = validateLLMFilterResponse(result, "entities matching");
@@ -1083,6 +1116,101 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
+    protected record EndTimeAfterQuery(String thresholdTime) {}
+
+    /**
+     * Detects list queries for acta dates whose meeting ended after a threshold (e.g. after 8:30 PM).
+     */
+    protected EndTimeAfterQuery detectEndTimeAfterListQuery(String query, JSONObject ner) {
+        if (query == null || query.isBlank()) {
+            return null;
+        }
+        String q =
+                Normalizer.normalize(query.toLowerCase(Locale.ROOT), Normalizer.Form.NFD)
+                        .replaceAll("\\p{M}", "");
+        boolean listDatesCue = q.contains("fechas") || q.contains("dates");
+        boolean endAfterCue =
+                (q.contains("terminaron")
+                                || q.contains("termino")
+                                || q.contains("finaliz")
+                                || q.contains("ended"))
+                        && (q.contains("tarde")
+                                || q.contains("despues")
+                                || q.contains("después")
+                                || q.contains("mas tarde")
+                                || q.contains("más tarde")
+                                || q.contains("later than")
+                                || q.contains("after"));
+        if (!listDatesCue || !endAfterCue) {
+            return null;
+        }
+        String threshold = extractEndTimeThresholdFromQuery(query, ner);
+        return threshold != null ? new EndTimeAfterQuery(threshold) : null;
+    }
+
+    protected String extractEndTimeThresholdFromQuery(String query, JSONObject ner) {
+        String raw = extractStartTimeFromQuery(query, ner);
+        if (raw == null) {
+            return null;
+        }
+        try {
+            int hour = Integer.parseInt(raw.substring(0, 2));
+            int minute = Integer.parseInt(raw.substring(3, 5));
+            String q = query == null ? "" : query.toLowerCase(Locale.ROOT);
+            if (hour < 12 && !q.contains("mañana") && !q.contains("manana")) {
+                if (q.contains("tarde") || q.contains("pm") || hour <= 9) {
+                    hour += 12;
+                }
+            }
+            return String.format("%02d:%02d", hour, minute);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    protected String resolveMinuteEndTime(Minute minute) {
+        if (minute == null) {
+            return null;
+        }
+        if (minute.endTime() != null && !minute.endTime().isBlank()) {
+            return normalizeTimeString(minute.endTime());
+        }
+        return null;
+    }
+
+    protected boolean minuteEndsAfterTime(Minute minute, String thresholdTime) {
+        if (thresholdTime == null || thresholdTime.isBlank()) {
+            return false;
+        }
+        String end = resolveMinuteEndTime(minute);
+        if (end == null) {
+            return false;
+        }
+        try {
+            LocalTime endT = LocalTime.parse(end);
+            LocalTime threshold = LocalTime.parse(thresholdTime);
+            return endT.isAfter(threshold);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Lists unique actas whose metadata end time is strictly after the requested HH:mm threshold. */
+    protected ToolResult listMeetingsEndingAfterTime(String query, List<Minute> minutes, String thresholdTime) {
+        List<Minute> canonical = dedupeMinutesByCanonicalMeetingDate(mergeMinutesByDocumentId(minutes));
+        List<Minute> matching =
+                canonical.stream()
+                        .filter(minute -> minuteEndsAfterTime(minute, thresholdTime))
+                        .sorted(
+                                Comparator.comparing(
+                                        StructuredMinuteMetadataSupport::formatDateSlash,
+                                        Comparator.nullsLast(String::compareTo)))
+                        .toList();
+        String answer =
+                StructuredMinuteMetadataSupport.formatEndTimeAfterListAnswer(query, matching, thresholdTime);
+        return ToolResult.from(formatResponse(answer, query), getClass());
+    }
+
     /**
      * Extracts HH:mm start time from user query or NER (e.g. "19:00", "19:00 horas").
      */
@@ -1122,6 +1250,15 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     private static final Map<String, String> FIELD_SYNONYMS = Map.ofEntries(
         Map.entry("secretaria", METADATA_KEY_SECRETARY),
         Map.entry("secretario", METADATA_KEY_SECRETARY),
+        Map.entry("secretary", METADATA_KEY_SECRETARY),
+        Map.entry("meeting", METADATA_KEY_MINUTE),
+        Map.entry("minutes", METADATA_KEY_MINUTE),
+        Map.entry("minute", METADATA_KEY_MINUTE),
+        Map.entry("president", METADATA_KEY_PRESIDENT),
+        Map.entry("date", METADATA_KEY_DATE),
+        Map.entry("agenda", METADATA_KEY_AGENDA),
+        Map.entry("attendees", METADATA_KEY_ATTENDEES),
+        Map.entry("topics", METADATA_KEY_TOPICS),
         Map.entry("orden del día", METADATA_KEY_AGENDA),
         Map.entry("orden_del_dia", METADATA_KEY_AGENDA),
         Map.entry("order_of_day", METADATA_KEY_AGENDA),
@@ -1316,7 +1453,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 );
 
         try {
-            String result = chatClient.prompt().user(prompt).call().content().strip();
+            String result = getLLMResponseCached("metadata-compare-topics", prompt);
             return objectMapper.readValue(result, new TypeReference<Map<String, List<String>>>() {});
         } catch (Exception ex) {
             return Map.of(
@@ -2093,13 +2230,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             """, query);
         
         try {
-            String result = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip()
-                    .toLowerCase();
+            String result = getLLMResponseCached("metadata-query-analysis", prompt).toLowerCase();
             
             // Validate and return the result
             if (result.contains("decision")) {
@@ -2131,7 +2262,14 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Delegates to {@link MetadataLlmResponseCacheService} so {@code @Cacheable} runs through the Spring proxy.
      */
     protected String getLLMResponseCached(String prompt) {
-        return llmResponseCache.getCachedResponse(prompt);
+        return getLLMResponseCached("metadata-enrichment", prompt);
+    }
+
+    /**
+     * Provider-aware metadata LLM call with stable operation id for diagnostics.
+     */
+    protected String getLLMResponseCached(String operation, String prompt) {
+        return llmResponseCache.getCachedResponse(operation, prompt);
     }
 
     /**
@@ -2417,12 +2555,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 """, topic, context.toString());
 
         try {
-            String result = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip();
+            String result = getLLMResponseCached("metadata-enrichment", prompt);
 
             Boolean validated = validateLLMFilterResponse(result, "filterDocumentsByTopic");
             if (validated != null && validated) {
@@ -2495,6 +2628,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (query == null || query.trim().isEmpty()) {
             return null;
         }
+        if (StructuredMinuteMetadataSupport.isPlaceListQuery(query)) {
+            return null;
+        }
         
         // Try to extract from NER first
         if (ner != null && !ner.isEmpty()) {
@@ -2548,7 +2684,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
         }
 
-        // Use literal topic when question explicitly mentions it (avoids LLM substituting heating for pool HVAC, etc.) — item 38
+        // Use literal topic when question explicitly mentions it (avoids LLM substituting heating for pool HVAC, etc.) - item 38
         String queryLower = query.toLowerCase().trim();
         if (queryLower.contains("calefacción") || queryLower.contains("calefaccion")) {
             log().info("Extracted topic from query (literal): calefacción");
@@ -2561,6 +2697,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (queryLower.contains("presupuesto")) {
             log().info("Extracted topic from query (literal): presupuesto");
             return "presupuesto";
+        }
+        if (queryLower.contains("problemas del ascensor") || queryLower.contains("problemas de ascensor")) {
+            log().info("Extracted topic from query (literal): problemas del ascensor");
+            return "problemas del ascensor";
         }
         if (queryLower.contains("ascensor")) {
             log().info("Extracted topic from query (literal): ascensor");
@@ -2611,6 +2751,26 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             after = after.replaceFirst("^(el|la|los|las)\\s+", "").trim();
             if (!after.isEmpty() && after.length() < 80) {
                 log().info("Extracted topic from query (after 'mencionan'): {}", after);
+                return after;
+            }
+        }
+
+        if (queryLower.contains(" mention ")) {
+            int idx = queryLower.indexOf(" mention ");
+            String after = query.substring(idx + " mention ".length()).trim().replaceFirst("\\?+$", "").trim();
+            after = after.replaceFirst("^(the|a|an)\\s+", "").trim();
+            if (!after.isEmpty() && after.length() < 80) {
+                log().info("Extracted topic from query (after 'mention'): {}", after);
+                return after;
+            }
+        }
+
+        if (queryLower.contains("discussed")) {
+            int idx = queryLower.indexOf("discussed");
+            String after = query.substring(idx + "discussed".length()).trim().replaceFirst("\\?+$", "").trim();
+            after = after.replaceFirst("^(the|a|an)\\s+", "").trim();
+            if (!after.isEmpty() && after.length() < 80) {
+                log().info("Extracted topic from query (after 'discussed'): {}", after);
                 return after;
             }
         }
@@ -2671,12 +2831,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             """, query);
         
         try {
-            String response = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip();
+            String response = getLLMResponseCached("metadata-enrichment", prompt);
             
             if (response != null && !response.trim().isEmpty() && !response.trim().equalsIgnoreCase("NONE")) {
                 String topic = response.trim();
@@ -2764,12 +2919,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             """, query);
         
         try {
-            String response = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip();
+            String response = getLLMResponseCached("metadata-enrichment", prompt);
             
             // Parse JSON response
             JSONObject json = new JSONObject(response);
@@ -2824,13 +2974,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             """, query);
         
         try {
-            String response = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip()
-                    .toUpperCase();
+            String response = getLLMResponseCached("metadata-field-normalization", prompt).toUpperCase();
             
             boolean result = response.contains("YES");
             log().debug("Detected date where person query: {} for query: {}", result, query);
@@ -2907,13 +3051,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             """, query);
         
         try {
-            String response = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip()
-                    .toUpperCase();
+            String response = getLLMResponseCached("metadata-field-normalization", prompt).toUpperCase();
             
             boolean result = response.contains("YES");
             log().info("Detected topic + person filter requirement: {} for query: '{}'", result, query);
@@ -3051,12 +3189,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             """, query);
         
         try {
-            String response = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip();
+            String response = getLLMResponseCached("metadata-enrichment", prompt);
             
             if (response != null && !response.trim().isEmpty() && !response.trim().equalsIgnoreCase("NONE")) {
                 String personName = response.trim();
@@ -3114,13 +3247,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             """, query);
         
         try {
-            String response = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip()
-                    .toUpperCase();
+            String response = getLLMResponseCached("metadata-field-normalization", prompt).toUpperCase();
             
             boolean result = response.contains("YES");
             log().debug("Detected specific topic query: {} for query: {}", result, query);
@@ -3232,12 +3359,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                         """, keyword, context.toString());
 
                     try {
-                        String result = chatClient
-                                .prompt()
-                                .user(prompt)
-                                .call()
-                                .content()
-                                .strip();
+                        String result = getLLMResponseCached("metadata-enrichment", prompt);
 
                         Boolean validated = validateLLMFilterResponse(result, "validateKeywordExists");
                         if (validated != null && validated) {
@@ -3296,10 +3418,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             if (ner.has(NER_KEY_FILTERS) && !ner.isNull(NER_KEY_FILTERS)) {
                 JSONObject filters = ner.getJSONObject(NER_KEY_FILTERS);
                 if (filters.has("date") && !filters.isNull("date")) {
-                    JSONArray dates = filters.getJSONArray("date");
-                    Pattern yearPattern = Pattern.compile("\\b(20\\d{2})\\b");
-                    for (int i = 0; i < dates.length(); i++) {
-                        String dateStr = dates.getString(i);
+                    for (String dateStr : NerDateFieldSupport.readDateStrings(filters, "date")) {
+                        Pattern yearPattern = Pattern.compile("\\b(20\\d{2})\\b");
                         Matcher matcher = yearPattern.matcher(dateStr);
                         if (matcher.find()) {
                             String year = matcher.group(1);
@@ -3329,12 +3449,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             """, query);
 
         try {
-            String response = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip();
+            String response = getLLMResponseCached("metadata-enrichment", prompt);
 
             if (response != null && !response.trim().isEmpty() && !response.trim().equalsIgnoreCase("NONE")
                     && response.matches("20\\d{2}")) {
@@ -3534,23 +3649,39 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (docs == null || docs.isEmpty()) {
             return Set.of();
         }
-        Map<String, Long> counts = new HashMap<>();
+        Set<String> executionSnapshots = RagSnapshotContextHolder.activeSnapshotIds();
+        if (!executionSnapshots.isEmpty()) {
+            return executionSnapshots;
+        }
+        // Prefer the snapshot that covers the most canonical ACTA meetings, not the one with the most
+        // HYBRID section chunks (stale rebuild rows can outrank the active project snapshot).
+        Map<String, Set<String>> actaKeysBySnapshot = new LinkedHashMap<>();
+        Map<String, Long> chunkCounts = new HashMap<>();
         for (Document doc : docs) {
             if (doc == null || !isCanonicalPdfActaDocument(doc)) {
                 continue;
             }
             Map<String, Object> flat = StructuredMinuteMetadataSupport.flattenMetadata(doc.getMetadata());
             String snapshotId = safeGetString(flat, METADATA_KEY_INDEX_SNAPSHOT_ID);
-            if (snapshotId != null && !snapshotId.isBlank()) {
-                counts.merge(snapshotId, 1L, Long::sum);
+            if (snapshotId == null || snapshotId.isBlank()) {
+                continue;
             }
+            chunkCounts.merge(snapshotId, 1L, Long::sum);
+            actaKeysBySnapshot
+                    .computeIfAbsent(snapshotId, ignored -> new LinkedHashSet<>())
+                    .add(actaDedupeKey(doc));
         }
-        if (counts.isEmpty()) {
+        if (actaKeysBySnapshot.isEmpty()) {
             return Set.of();
         }
         String dominant =
-                counts.entrySet().stream()
-                        .max(Map.Entry.comparingByValue())
+                actaKeysBySnapshot.entrySet().stream()
+                        .max(
+                                Comparator.<Map.Entry<String, Set<String>>>comparingInt(
+                                                entry -> entry.getValue().size())
+                                        .thenComparing(
+                                                entry ->
+                                                        chunkCounts.getOrDefault(entry.getKey(), 0L)))
                         .map(Map.Entry::getKey)
                         .orElse(null);
         return dominant != null ? Set.of(dominant) : Set.of();
@@ -3579,7 +3710,12 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         return !activeSnapshotIds.contains(snapshotId);
     }
 
-    /** Acceptance corpus: canonical {@code ACTA N.pdf} only. */
+    /**
+     * Acceptance corpus: canonical {@code ACTA N.pdf} production documents, plus first-class
+     * evaluation-gold fixtures ({@code EvaluationGoldCorpusFilenameSupport}, e.g.
+     * {@code ACTA_6__ACTA_6_META.eval-gold.txt}) used by the benchmark/lab harness. Other
+     * {@code .txt} artifacts (ad-hoc/legacy fixtures outside both conventions) remain excluded.
+     */
     protected boolean isCanonicalPdfActaDocument(Document doc) {
         if (doc == null) {
             return false;
@@ -3588,6 +3724,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         String filename = resolveMetadataFilename(flat);
         if (filename == null || filename.isBlank()) {
             return false;
+        }
+        if (EvaluationGoldCorpusFilenameSupport.isEvaluationGoldFilename(filename)) {
+            return true;
         }
         String lower = filename.trim().toLowerCase(Locale.ROOT);
         if (lower.endsWith(".txt")) {
@@ -3925,6 +4064,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         String answer =
                 StructuredMinuteMetadataSupport.formatFindParagraphTopicEvidenceAnswer(
                         query, bestMinute, bestParagraph, evidenceContext);
+        // Unlike the full ranking/clustering path in execute(), this fast single-topic exit must publish
+        publishMatchedMinutesContext(List.of(bestMinute), true);
         return Optional.of(ToolResult.from(formatResponse(answer, query), getClass()));
     }
 
@@ -4041,6 +4182,13 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (stem.contains("ascensor")) {
             return normalizedHaystack.contains("ascensor")
                     || normalizedHaystack.contains("elevator")
+                    || normalizedHaystack.contains("mejora del ascensor")
+                    || normalizedHaystack.contains("modernizar el ascensor")
+                    || normalizedHaystack.contains("reparar el ascensor");
+        }
+        if (stem.contains("elevator")) {
+            return normalizedHaystack.contains("elevator")
+                    || normalizedHaystack.contains("ascensor")
                     || normalizedHaystack.contains("mejora del ascensor")
                     || normalizedHaystack.contains("modernizar el ascensor")
                     || normalizedHaystack.contains("reparar el ascensor");
@@ -4282,9 +4430,27 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
     /**
      * Widens retrieval for corpus-wide deterministic queries (topic counts, compound filters).
+     * Gated by {@link MetadataCorpusScanSettings#fullScanMaxDocuments()} on distinct acta count.
      */
     protected List<Document> retrieveCorpusDocumentsWithFallback(String query, String[] relevantFields) {
-        retriever.setTopK(100);
+        long start = System.nanoTime();
+        List<Document> cached = MetadataCorpusAccess.getOrLoadCorpusChunks();
+        if (!cached.isEmpty()) {
+            List<Document> merged = mergeChunksWithRichestMetadata(collectInScopeCorpusRows(cached));
+            log().info(
+                    "Corpus retrieval (jdbc cache) for '{}': raw={}, merged={} actas",
+                    query,
+                    cached.size(),
+                    merged.size());
+            RagToolTimingTelemetry.logTool(
+                    getClass().getSimpleName(),
+                    "corpus_merge",
+                    RagToolTimingTelemetry.elapsedMs(start),
+                    "OK",
+                    "raw=" + cached.size() + " merged=" + merged.size());
+            return merged;
+        }
+        retriever.setTopK(200);
         retriever.setSimilarityThreshold(0.0);
         try {
             List<Document> raw = new ArrayList<>();
@@ -4292,18 +4458,82 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             raw.addAll(retrieveAllDocuments(query, null));
             List<Document> merged = mergeChunksWithRichestMetadata(collectInScopeCorpusRows(raw));
             log().info(
-                    "Corpus retrieval for '{}': raw={}, merged={} actas",
+                    "Corpus retrieval (vector fallback) for '{}': raw={}, merged={} actas",
                     query,
                     raw.size(),
                     merged.size());
+            RagToolTimingTelemetry.logTool(
+                    getClass().getSimpleName(),
+                    "corpus_merge_vector",
+                    RagToolTimingTelemetry.elapsedMs(start),
+                    "OK",
+                    "raw=" + raw.size() + " merged=" + merged.size());
             return merged;
         } finally {
             retriever.restoreDefaultSettings();
         }
     }
 
+    protected int countDistinctCanonicalActas(List<Document> docs) {
+        if (docs == null || docs.isEmpty()) {
+            return 0;
+        }
+        Set<String> keys = new LinkedHashSet<>();
+        for (Document doc : docs) {
+            if (doc == null) {
+                continue;
+            }
+            String key = actaDedupeKey(doc);
+            if (key != null && !key.isBlank()) {
+                keys.add(key);
+            }
+        }
+        return keys.size();
+    }
+
+    protected boolean isSmallCorpusEligibleForFullScan(List<Document> broadScan) {
+        int distinct = countDistinctCanonicalActas(broadScan);
+        return distinct > 0 && distinct <= MetadataCorpusScanSettings.fullScanMaxDocuments();
+    }
+
+    protected boolean isCorpusWideMetadataQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        String q = query.toLowerCase(Locale.ROOT);
+        return ActaFieldAnchorHeuristics.isCorpusWideAggregate(q)
+                || q.contains("en cuántas actas")
+                || q.contains("en cuantas actas")
+                || q.contains("en qué actas")
+                || q.contains("en que actas")
+                || q.contains("en cuántas reuniones")
+                || q.contains("en cuantas reuniones");
+    }
+
+    protected List<Document> retrieveWithSmallCorpusFullScanIfEligible(
+            String query, String[] relevantFields, JSONObject ner) {
+        if (!isCorpusWideMetadataQuery(query)) {
+            return retrieveDocumentsWithFallback(query, relevantFields, ner);
+        }
+        List<Document> broad = retrieveAllDocuments(query, ner);
+        if (!isSmallCorpusEligibleForFullScan(broad)) {
+            return retrieveDocumentsWithFallback(query, relevantFields, ner);
+        }
+        log().info(
+                "Small corpus full-scan (<= {} actas) for corpus-wide query",
+                MetadataCorpusScanSettings.fullScanMaxDocuments());
+        if (!broad.isEmpty()) {
+            return mergeChunksWithRichestMetadata(collectInScopeCorpusRows(broad));
+        }
+        return retrieveCorpusDocumentsWithFallback(query, relevantFields);
+    }
+
     /** Broad corpus scan not limited to the user question's semantic top-k. */
     protected List<Document> retrieveAllDocuments(String query, JSONObject ner) {
+        List<Document> cached = MetadataCorpusAccess.getOrLoadCorpusChunks();
+        if (!cached.isEmpty()) {
+            return cached;
+        }
         List<Document> broad = retriever.retrieve("acta reunión junta propietarios");
         if (broad == null || broad.isEmpty()) {
             broad = retriever.retrieve("reunión acta");
@@ -4329,15 +4559,29 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             log().debug("lookupDocumentsByDateIso: year-only anchor {}, skipping exact lookup", requestedDate);
             return List.of();
         }
-        retriever.setTopK(100);
-        retriever.setSimilarityThreshold(0.0);
-        try {
-            List<Document> docs =
-                    mergeChunksByDocumentId(retrieveDocumentsWithFallback(query, relevantFields, ner));
-            return validateDateMatch(docs, requestedDate);
-        } finally {
-            retriever.restoreDefaultSettings();
+        long start = System.nanoTime();
+        List<Document> cached = MetadataCorpusAccess.getOrLoadCorpusChunks();
+        List<Document> docs;
+        if (!cached.isEmpty()) {
+            docs =
+                    mergeChunksByDocumentId(
+                            mergeChunksWithRichestMetadata(collectInScopeCorpusRows(cached)));
+            RagToolTimingTelemetry.logTool(
+                    getClass().getSimpleName(),
+                    "date_iso_lookup",
+                    RagToolTimingTelemetry.elapsedMs(start),
+                    "CACHE",
+                    "date=" + requestedDate);
+        } else {
+            retriever.setTopK(200);
+            retriever.setSimilarityThreshold(0.0);
+            try {
+                docs = mergeChunksByDocumentId(retrieveCorpusDocumentsWithFallback(query, relevantFields));
+            } finally {
+                retriever.restoreDefaultSettings();
+            }
         }
+        return validateDateMatch(docs, requestedDate);
     }
 
     protected boolean hasExplicitActaDate(String query, JSONObject ner) {
@@ -4413,7 +4657,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         String q = query.toLowerCase(Locale.ROOT);
         return q.matches(".*\\b\\d{4}-\\d{2}-\\d{2}\\b.*")
                 || q.matches(".*\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{4}\\b.*")
-                || q.matches(".*\\b\\d{1,2}\\s+de\\s+\\p{L}+\\s+de\\s+\\d{4}\\b.*");
+                || q.matches(".*\\b\\d{1,2}\\s+de\\s+\\p{L}+\\s+de[l]?\\s+\\d{4}\\b.*");
     }
 
     protected String formatUnavailableSpecificMeetingDateMessage(String query, String isoDate) {
@@ -5008,29 +5252,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Reads NER {@code date} whether stored as a JSON array or a single string.
      */
     protected List<String> extractNerDateStrings(JSONObject ner) {
-        if (ner == null || !ner.has("date")) {
-            return List.of();
-        }
-        List<String> out = new ArrayList<>();
-        try {
-            JSONArray arr = ner.optJSONArray("date");
-            if (arr != null) {
-                for (int i = 0; i < arr.length(); i++) {
-                    String s = arr.optString(i, "").trim();
-                    if (!s.isBlank()) {
-                        out.add(s);
-                    }
-                }
-                return out;
-            }
-            Object raw = ner.get("date");
-            if (raw instanceof String s && !s.isBlank()) {
-                out.add(s.trim());
-            }
-        } catch (Exception e) {
-            log().warn("Error extracting dates from NER: {}", e.getMessage());
-        }
-        return out;
+        return NerDateFieldSupport.readDateStrings(ner);
     }
 
     /**
@@ -5279,12 +5501,28 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         log().info("Filtered {} minutes to {} by date (target dates: {})", 
                 minutes.size(), filtered.size(), targetDates);
 
-        // Fallback: if filtering removed all minutes, return original list with warning
         if (filtered.isEmpty() && !minutes.isEmpty()) {
-            log().warn("Date filtering removed all minutes! This might indicate a parsing issue. " +
-                      "Returning original {} minutes. Query: {}, Target dates: {}", 
-                      minutes.size(), query, targetDates);
-            return minutes;
+            long minutesWithUnparseableDate =
+                    minutes.stream()
+                            .filter(m -> m.date() != null && !m.date().trim().isEmpty())
+                            .filter(m -> parseDateFlexible(m.date()) == null)
+                            .count();
+            if (minutesWithUnparseableDate > 0) {
+                log().warn(
+                        "Date filtering removed all minutes due to unparseable minute dates ({} of {}). "
+                                + "Returning original {} minutes. Query: {}, Target dates: {}",
+                        minutesWithUnparseableDate,
+                        minutes.size(),
+                        minutes.size(),
+                        query,
+                        targetDates);
+                return minutes;
+            }
+            log().info(
+                    "Date filtering removed all minutes - no match for target dates {}. Query: {}",
+                    targetDates,
+                    query);
+            return List.of();
         }
 
         return filtered;

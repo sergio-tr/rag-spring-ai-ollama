@@ -142,6 +142,19 @@ class DateGroundingSupportTest {
     }
 
     @Test
+    void regression_delYearVariant_parsesAsDayPrecisionNotYearOnly() {
+        var requestedDe = DateGroundingSupport.requestedDate("cuales son los asistentes del acta del 25 de agosto de 2025?")
+                .orElseThrow();
+        var requestedDel = DateGroundingSupport.requestedDate("cuales son los asistentes del acta del 25 de agosto del 2025?")
+                .orElseThrow();
+
+        assertThat(requestedDe.precision()).isEqualTo(DateGroundingSupport.DatePrecision.DAY);
+        assertThat(requestedDe.value()).isEqualTo("2025-08-25");
+        assertThat(requestedDel.precision()).isEqualTo(DateGroundingSupport.DatePrecision.DAY);
+        assertThat(requestedDel.value()).isEqualTo("2025-08-25");
+    }
+
+    @Test
     void unsupportedSourcesTriggerAbstentionReasonForExactDateQuestion() {
         var decision = DateGroundingSupport.decision("¿Qué dice el acta del 25/02/2026 sobre X?", List.of());
 
@@ -149,6 +162,17 @@ class DateGroundingSupportTest {
         assertThat(decision.abstentionReason()).isEqualTo("no_source_candidates");
         assertThat(DateGroundingSupport.mismatchMessage("¿Qué dice el acta del 25/02/2026 sobre X?", decision))
                 .contains("No he encontrado un acta con fecha 2026-02-25");
+    }
+
+    @Test
+    void fullDateInQueryTakesPrecedenceOverEmbeddedYear() {
+        var requested =
+                DateGroundingSupport.requestedDate(
+                                "cuales son los asistentes del acta del 25 de agosto del 2025 en el año 2025?")
+                        .orElseThrow();
+
+        assertThat(requested.precision()).isEqualTo(DateGroundingSupport.DatePrecision.DAY);
+        assertThat(requested.value()).isEqualTo("2025-08-25");
     }
 
     private static RetrievalCandidate candidate(String filename, String content, Map<String, Object> metadata) {

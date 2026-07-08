@@ -10,6 +10,7 @@ import com.uniovi.rag.application.service.evaluation.LabJobProgressTracker;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusIndexPrepareResult;
 import com.uniovi.rag.application.service.evaluation.corpus.EvaluationCorpusIndexService;
 import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes;
+import com.uniovi.rag.application.service.knowledge.KnowledgeIndexSnapshotProfileAccess;
 import com.uniovi.rag.application.service.knowledge.KnowledgePipelineOrchestrator;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.application.service.knowledge.LabIndexProfileOverrideFactory;
@@ -45,6 +46,7 @@ class LabEvaluationSnapshotServiceTest {
     @Mock private EvaluationCorpusIndexService evaluationCorpusIndexService;
     @Mock private CorpusAvailabilityGate corpusAvailabilityGate;
     @Mock private KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
+    @Mock private KnowledgeIndexSnapshotProfileAccess snapshotProfileAccess;
     @Mock private EvaluationRunRepository evaluationRunRepository;
     @Mock private ProjectRepository projectRepository;
     @Mock private ObjectProvider<LabJobProgressTracker> labJobProgressTracker;
@@ -54,8 +56,30 @@ class LabEvaluationSnapshotServiceTest {
 
     @BeforeEach
     void setUp() {
+        when(snapshotProfileAccess.loadProfileJsonb(any(UUID.class)))
+                .thenAnswer(
+                        inv -> {
+                            UUID id = inv.getArgument(0);
+                            return knowledgeIndexSnapshotRepository
+                                    .findById(id)
+                                    .map(
+                                            s ->
+                                                    s.getIndexProfileJsonb() != null
+                                                            ? s.getIndexProfileJsonb()
+                                                            : Map.<String, Object>of())
+                                    .orElse(Map.of());
+                        });
+        when(snapshotProfileAccess.resolveProfileJsonb(any(KnowledgeIndexSnapshotEntity.class)))
+                .thenAnswer(
+                        inv -> {
+                            KnowledgeIndexSnapshotEntity snap = inv.getArgument(0);
+                            return snap != null && snap.getId() != null
+                                    ? snapshotProfileAccess.loadProfileJsonb(snap.getId())
+                                    : Map.of();
+                        });
         indexSnapshotCompatibilityService =
-                new LabIndexSnapshotCompatibilityService(corpusAvailabilityGate, knowledgePipelineOrchestrator);
+                new LabIndexSnapshotCompatibilityService(
+                        corpusAvailabilityGate, knowledgePipelineOrchestrator, snapshotProfileAccess);
         service =
                 new LabEvaluationSnapshotService(
                         knowledgeSnapshotService,
@@ -66,6 +90,7 @@ class LabEvaluationSnapshotServiceTest {
                         corpusAvailabilityGate,
                         indexSnapshotCompatibilityService,
                         knowledgeIndexSnapshotRepository,
+                        snapshotProfileAccess,
                         evaluationRunRepository,
                         projectRepository,
                         labJobProgressTracker);

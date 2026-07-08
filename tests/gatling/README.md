@@ -11,7 +11,7 @@ Answers below are **canonical for this repo** (do not duplicate long rationale i
 | Topic | Decision |
 | --- | --- |
 | **LLM target** | **Real Ollama** for **load / stress / spike** profiles. **CI / smoke:** controlled settings (small model, low top-k) as set on the backend. **Soak:** optional, **manual only** (cost). |
-| **Users** | **Feeder CSV** [`src/gatling/resources/users.csv`](src/gatling/resources/users.csv) with **multiple rows** — default uses repeated seed user; **replace with distinct accounts** for realistic isolation. |
+| **Users** | **Feeder CSV** [`src/gatling/resources/users.csv`](src/gatling/resources/users.csv) with **multiple rows** - default uses repeated seed user; **replace with distinct accounts** for realistic isolation. |
 | **API mix** | Default mix focuses on authenticated product reads + optional admin. Override with `GATLING_MIX_*_PCT`. |
 | **Queries** | [`questions.csv`](src/gatling/resources/questions.csv) includes **simple** and **complex** rows (`complexity` column) for heavier prompts. |
 | **Phases** | **Stage 1:** one configurable simulation family: `MixedRealistic*` + `GATLING_PROFILE`. **Stage 2:** profile-specific classes (`MixedRealisticSmokeSimulation`, …) for workflow dropdowns. |
@@ -20,7 +20,7 @@ Answers below are **canonical for this repo** (do not duplicate long rationale i
 ## Prerequisites
 
 - JDK **21+** on `PATH`
-- A running RAG Spring Boot instance (for real runs). For mixed simulations, ensure Ollama capacity is acceptable — see [docs/performance/README.md](../../docs/performance/README.md).
+- A running RAG Spring Boot instance (for real runs). For mixed simulations, ensure Ollama capacity is acceptable - see [docs/performance/README.md](../../docs/performance/README.md).
 
 ## Commands
 
@@ -63,11 +63,11 @@ For final release evidence, prefer product-authenticated simulations (`ProductAu
 | Class | Profile | Typical use |
 | --- | --- | --- |
 | `MixedRealisticSimulation` | `GATLING_PROFILE` env (default `load`) | Single entry with env-driven profile |
-| `MixedRealisticSmokeSimulation` | `smoke` | Short, few VUs — **CI / post-deploy** |
+| `MixedRealisticSmokeSimulation` | `smoke` | Short, few VUs - **CI / post-deploy** |
 | `MixedRealisticLoadSimulation` | `load` | Sustained nominal mix |
 | `MixedRealisticStressSimulation` | `stress` | High ramp + hold (lenient assertions) |
 | `MixedRealisticSpikeSimulation` | `spike` | Burst + tail ramp |
-| `MixedRealisticSoakSimulation` | `soak` | Long duration — **manual**, increase runner timeout |
+| `MixedRealisticSoakSimulation` | `soak` | Long duration - **manual**, increase runner timeout |
 
 ### Mix and SLA env (selected)
 
@@ -119,8 +119,8 @@ Stress/spike reuse `GATLING_STRESS_*` / `GATLING_SPIKE_*` where noted in [`Mixed
 
 ## Feeders
 
-- `src/gatling/resources/questions.csv` — `question` (+ optional `complexity`) for mixed workloads (when applicable).
-- `src/gatling/resources/users.csv` — `email`, `password` for multi-row login feeders (**replace rows** with real distinct users when load-testing tenancy).
+- `src/gatling/resources/questions.csv` - `question` (+ optional `complexity`) for mixed workloads (when applicable).
+- `src/gatling/resources/users.csv` - `email`, `password` for multi-row login feeders (**replace rows** with real distinct users when load-testing tenancy).
 
 ## Simulations (summary)
 
@@ -136,11 +136,11 @@ Stress/spike reuse `GATLING_STRESS_*` / `GATLING_SPIKE_*` where noted in [`Mixed
 | `AuthLoginNegativeSimulation` | Wrong login, invalid email login, invalid refresh (**401/400**). |
 | `AdminApiSimulation` | Product admin health/models unauthenticated + USER **403**; optional ADMIN **200** if `GATLING_ADMIN_EMAIL` set. |
 | `MixedRealisticSimulation` | Weighted **auth + admin/product** mix; profile from `GATLING_PROFILE`. |
-| `MixedRealisticSmokeSimulation` | **Smoke** profile — few VUs, short duration. |
-| `MixedRealisticLoadSimulation` | **Load** profile — ramp + hold. |
-| `MixedRealisticStressSimulation` | **Stress** profile — higher ramp / lenient SLAs. |
+| `MixedRealisticSmokeSimulation` | **Smoke** profile - few VUs, short duration. |
+| `MixedRealisticLoadSimulation` | **Load** profile - ramp + hold. |
+| `MixedRealisticStressSimulation` | **Stress** profile - higher ramp / lenient SLAs. |
 | `MixedRealisticSpikeSimulation` | **Spike** injection pattern. |
-| `MixedRealisticSoakSimulation` | **Soak** — long `maxDuration`; **manual** only in practice. |
+| `MixedRealisticSoakSimulation` | **Soak** - long `maxDuration`; **manual** only in practice. |
 
 ## Optional token prep
 

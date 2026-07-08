@@ -227,6 +227,21 @@ class LlmModelCatalogServiceTest {
     }
 
     @Test
+    void ocrChatModelIsNotSelectableByUser() {
+        LlmProperties properties = LlmModelCatalogTestSupport.openAiLiteLlmProperties();
+        properties
+                .getOpenAiCompatible()
+                .setAvailableChatModels(List.of("glm-ocr:latest", "gpt-oss:20b"));
+        LlmModelCatalogService catalog = LlmModelCatalogTestSupport.catalogFrom(properties);
+
+        assertTrue(catalog.find(LlmProvider.OPENAI_COMPATIBLE, "glm-ocr:latest", LlmModelCapability.CHAT).isPresent());
+        assertFalse(
+                catalog.find(LlmProvider.OPENAI_COMPATIBLE, "glm-ocr:latest", LlmModelCapability.CHAT)
+                        .orElseThrow()
+                        .selectableByUser());
+    }
+
+    @Test
     void defaultNotListedIsAddedWithWarningPolicy() {
         LlmProperties properties = new LlmProperties();
         properties.getOllama().setDefaultChatModel("gemma3:4b");

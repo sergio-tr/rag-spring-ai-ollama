@@ -11,6 +11,8 @@ import com.uniovi.rag.application.service.evaluation.corpus.LabCorpusReasonCodes
 import com.uniovi.rag.application.service.evaluation.ExperimentalDatasetValidationException;
 import com.uniovi.rag.application.service.evaluation.LabDatasetGateException;
 import com.uniovi.rag.application.service.evaluation.LabJobConcurrencyException;
+import com.uniovi.rag.application.service.knowledge.EmbeddingIndexCompatibilityException;
+import com.uniovi.rag.application.config.PromptTemplateValidationException;
 import com.uniovi.rag.application.service.chat.RuntimeConfigurationInvalidException;
 import com.uniovi.rag.application.service.admin.model.AdminModelCheckException;
 import com.uniovi.rag.interfaces.rest.NotFoundException;
@@ -254,6 +256,24 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
         ));
     }
 
+    @ExceptionHandler(EmbeddingIndexCompatibilityException.class)
+    public ResponseEntity<ApiErrorResponse> handleEmbeddingIndexCompatibility(
+            EmbeddingIndexCompatibilityException ex, HttpServletRequest request) {
+        Map<String, Object> details =
+                ex.details() != null && !ex.details().isEmpty() ? new LinkedHashMap<>(ex.details()) : null;
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(
+                        new ApiErrorResponse(
+                                Instant.now(),
+                                HttpStatus.UNPROCESSABLE_ENTITY.value(),
+                                trimOrFallback(ex.code(), "NO_COMPATIBLE_VECTOR_INDEX"),
+                                trimOrFallback(ex.getMessage(), "Embedding index compatibility check failed"),
+                                request != null ? request.getRequestURI() : null,
+                                request != null ? headerFirstNonBlank(request, "X-Request-Id", "x-request-id") : null,
+                                null,
+                                details));
+    }
+
     @ExceptionHandler(AdminModelCheckException.class)
     public ResponseEntity<ApiErrorResponse> handleAdminModelCheck(AdminModelCheckException ex, HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(build(
@@ -262,6 +282,27 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 trimOrFallback(ex.code(), "MODEL_INVALID"),
                 trimOrFallback(ex.getMessage(), "Model check failed"),
                 null));
+    }
+
+    @ExceptionHandler(PromptTemplateValidationException.class)
+    public ResponseEntity<ApiErrorResponse> handlePromptTemplateInvalid(
+            PromptTemplateValidationException ex, HttpServletRequest request) {
+        Map<String, Object> details = new LinkedHashMap<>(ex.toDetailsMap());
+        List<ApiValidationError> validationErrors = List.of(
+                new ApiValidationError(
+                        ex.field() != null ? ex.field() : "promptOverrides",
+                        trimOrFallback(ex.getMessage(), "Invalid prompt template")));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(
+                        new ApiErrorResponse(
+                                Instant.now(),
+                                HttpStatus.BAD_REQUEST.value(),
+                                PromptTemplateValidationException.ERROR_CODE,
+                                trimOrFallback(ex.getMessage(), "Invalid prompt template"),
+                                request != null ? request.getRequestURI() : null,
+                                request != null ? headerFirstNonBlank(request, "X-Request-Id", "x-request-id") : null,
+                                validationErrors,
+                                details));
     }
 
     @ExceptionHandler(RuntimeConfigurationInvalidException.class)

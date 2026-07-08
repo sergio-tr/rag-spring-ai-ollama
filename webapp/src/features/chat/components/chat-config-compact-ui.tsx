@@ -35,9 +35,11 @@ export type CompactSummaryRowProps = Readonly<{
 
 export function CompactSummaryRow({ label, value, testId }: CompactSummaryRowProps) {
   return (
-    <div className="flex items-baseline justify-between gap-3 text-sm" data-testid={testId}>
+    <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3 text-sm" data-testid={testId}>
       <span className="text-muted-foreground shrink-0">{label}</span>
-      <span className="min-w-0 text-right font-medium leading-snug">{value}</span>
+      <span className="min-w-0 break-words sm:text-right font-medium leading-snug [overflow-wrap:anywhere]">
+        {value}
+      </span>
     </div>
   );
 }

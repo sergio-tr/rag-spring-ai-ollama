@@ -17,7 +17,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Maps P33 persistence entities to domain read models and P30 suite requests — one direction per call site.
+ * Maps P33 persistence entities to domain read models and P30 suite requests - one direction per call site.
  */
 @Component
 public class RuntimeTraceRegressionSuiteDefinitionPersistenceMapper {

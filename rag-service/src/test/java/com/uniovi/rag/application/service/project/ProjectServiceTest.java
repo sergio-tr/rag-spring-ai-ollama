@@ -17,6 +17,7 @@ import com.uniovi.rag.interfaces.rest.dto.PatchProjectRequest;
 import com.uniovi.rag.interfaces.rest.dto.ProjectListResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.ProjectSummaryDto;
 import com.uniovi.rag.application.service.preset.PresetService;
+import com.uniovi.rag.application.service.config.UserProjectConfigurationService;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -69,6 +70,9 @@ class ProjectServiceTest {
 
     @Mock
     private EvaluationCorpusRepository evaluationCorpusRepository;
+
+    @Mock
+    private UserProjectConfigurationService userProjectConfigurationService;
 
     @InjectMocks
     private ProjectService projectService;
@@ -128,6 +132,7 @@ class ProjectServiceTest {
         assertThat(dto.name()).isEqualTo("My project");
         assertThat(dto.indexProfile()).isNotNull();
         assertThat(dto.indexProfile().materializationStrategy()).isEqualTo("CHUNK_LEVEL");
+        verify(userProjectConfigurationService).seedProjectRetrievalDefaultsAtCreation(userId, newId);
     }
 
     @Test

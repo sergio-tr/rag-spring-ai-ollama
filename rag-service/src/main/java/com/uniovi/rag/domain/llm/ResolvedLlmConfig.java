@@ -7,7 +7,7 @@ import java.util.Objects;
  * Effective LLM settings after cascade merge (application defaults → system → user → project → preset → runtime).
  * Chat and embedding providers are explicit; with only {@code rag.llm.default-provider} both are uniform.
  * Hybrid mode requires explicit {@code default-chat-provider} / {@code default-embedding-provider} (or per-layer overrides).
- * Never contains a resolved API secret — only the environment variable or secret name reference.
+ * Never contains a resolved API secret - only the environment variable or secret name reference.
  */
 public record ResolvedLlmConfig(
         LlmProvider chatProvider,
@@ -82,7 +82,7 @@ public record ResolvedLlmConfig(
     }
 
     /**
-     * Structural validation after merge. Does not read {@code System.getenv} — use {@link #requireApiKeyEnvResolvable()} at call time.
+     * Structural validation after merge. Does not read {@code System.getenv} - use {@link #requireApiKeyEnvResolvable()} at call time.
      */
     public void validate() {
         if (baseUrl == null || baseUrl.isBlank()) {

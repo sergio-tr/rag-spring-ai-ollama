@@ -14,13 +14,13 @@
 
 **Not blocking deploy by default:** `integration.yml`, `e2e-fullstack.yml` (standalone), `sonar.yml`, `gatling.yml`, `micro-benchmark.yml`, `system-checks.yml`, `build-images.yml`, `e2e.yml`. Promote any of these only if release policy demands it.
 
-**Operational smoke after deploy:** manual checks (health, login/chat) are documented in [../operations/runbook-docker-vm.md](../operations/runbook-docker-vm.md) and the Deployment runbook section in [docker/README.md](../../docker/README.md) — not automated in `deploy.yml` today.
+**Operational smoke after deploy:** manual checks (health, login/chat) are documented in [../operations/runbook-docker-vm.md](../operations/runbook-docker-vm.md) and the Deployment runbook section in [docker/README.md](../../docker/README.md) - not automated in `deploy.yml` today.
 
 ## Principles
 
 - **Unit and service tests** live with each module (`rag-service`, `classifier-service`, `webapp`).
 - **Stack HTTP integration** (`tests/integration/`) validates **contracts and multi-service behaviour** without a browser; run in CI via [`integration.yml`](../../.github/workflows/integration.yml).
-- **E2E (browser)** is **Playwright** under `webapp/e2e/` (domain folders + `fixtures/` / `support/`; see [`webapp/e2e/README.md`](../../webapp/e2e/README.md)).
+- **E2E (browser)** is **Playwright** under `webapp/e2e/` (domain folders + `fixtures/` / `support/`; see [`webapp/e2e/README.md`](../../webapp/e2e/README.md)). **PR critical path** (`@fullstack` + `@critical`): [e2e-critical-taxonomy.md](e2e-critical-taxonomy.md).
 - **Naming:** “integration” in **Java** means Spring slice/JDBC tests inside `rag-service`; “**stack integration**” means **pytest + httpx** in `tests/integration/`.
 
 ## Testing matrix (what runs where)
@@ -32,11 +32,11 @@
 | Integration (service) | Spring `@WebMvcTest`, JDBC | `rag-service/src/test` | `ci.yml` (`mvn verify`) |
 | Stack integration (HTTP) | Auth, product API, lab jobs, optional classifier/obs | `tests/integration` | [`integration.yml`](../../.github/workflows/integration.yml) |
 | E2E UI | Full product flows in browser | `webapp/e2e` (exclude `api/`) | `ci.yml`: smoke + **`@fullstack`** (`e2e_fullstack`); optional post-merge [`e2e-fullstack.yml`](../../.github/workflows/e2e-fullstack.yml) |
-| API / system smoke (Playwright `request`) | **Canonical** HTTP smoke: auth, product, serial API smoke chain — no browser | `webapp/e2e/api` | Local: `npm run test:api`; manual [`system-checks.yml`](../../.github/workflows/system-checks.yml); `make system-checks` |
+| API / system smoke (Playwright `request`) | **Canonical** HTTP smoke: auth, product, serial API smoke chain - no browser | `webapp/e2e/api` | Local: `npm run test:api`; manual [`system-checks.yml`](../../.github/workflows/system-checks.yml); `make system-checks` |
 | Load / stress | RPS, latency reports | Gatling | [`gatling.yml`](../../.github/workflows/gatling.yml) |
 | Micro-benchmark (Python) | Low-concurrency RAG latency + estimated tokens (schema v1); not load | `tests/performance/retrieval_benchmark.py`, `llm_benchmark.py`, `infra_probe.py` | Local; optional [`micro-benchmark.yml`](../../.github/workflows/micro-benchmark.yml) (dispatch / weekly, **no gates**) |
 
-**Playwright API vs pytest:** canonical operator/API smoke is [`webapp/e2e/api`](../../webapp/e2e/api) (`npm run test:api`). **pytest** in `tests/integration/` keeps **deep** HTTP contracts (lab jobs, obs, classifier matrices) — do not duplicate those assertions in Playwright API. Tooling reference: [traceability-retired-tools.md](traceability-retired-tools.md). See also [webapp/e2e/api/README.md](../../webapp/e2e/api/README.md), [tests/integration/README.md](../../tests/integration/README.md).
+**Playwright API vs pytest:** canonical operator/API smoke is [`webapp/e2e/api`](../../webapp/e2e/api) (`npm run test:api`). **pytest** in `tests/integration/` keeps **deep** HTTP contracts (lab jobs, obs, classifier matrices) - do not duplicate those assertions in Playwright API. Tooling reference: [traceability-retired-tools.md](traceability-retired-tools.md). See also [webapp/e2e/api/README.md](../../webapp/e2e/api/README.md), [tests/integration/README.md](../../tests/integration/README.md).
 
 ## Entry points
 
@@ -68,7 +68,7 @@ Use the same commands locally that the reusable workflow runs (`./mvnw verify`, 
 | --- | --- | --- | --- |
 | **rag-service** | JaCoCo **line** coverage ≥ **80%** on the configured bundle (`rag-service/pom.xml` `jacoco:check`) | `./mvnw verify` (from `rag-service/`) | `rag-service/target/site/jacoco/jacoco.xml` (also `index.html`) |
 | **classifier-service** | pytest-cov **lines** ≥ **80%**, branches on (`.coveragerc`) | `pytest` with project `addopts` | `classifier-service/coverage.xml`, `htmlcov/` |
-| **webapp** | Vitest v8: **80%** lines, statements, functions, branches (`vitest.config.ts`) | `npm run test:coverage` (from `webapp/`) | `webapp/coverage/lcov.info`, `coverage/index.html` (CI may upload `webapp/coverage/` as an artifact — see `ci.yml`) |
+| **webapp** | Vitest v8: **80%** lines, statements, functions, branches (`vitest.config.ts`) | `npm run test:coverage` (from `webapp/`) | `webapp/coverage/lcov.info`, `coverage/index.html` (CI may upload `webapp/coverage/` as an artifact - see `ci.yml`) |
 | **SonarCloud** | Quality Gate (see Sonar UI); **Java + Python + TS LCOV** when `sonar.yml` runs | Same reports as above; workflow runs Vitest before scan | Dashboard + PR decoration; `sonar-project.properties` lists `jacoco.xml`, `coverage.xml`, `webapp/coverage/lcov.info` |
 
 **Note:** JaCoCo and Sonar **coverage exclusions** (large orchestration, tools, etc.) mean the percentage is over **included** lines, not every file in the tree. Vitest `coverage.exclude` defines the frontend gate scope. See [../coverage/README.md](../coverage/README.md).
@@ -77,7 +77,7 @@ Use the same commands locally that the reusable workflow runs (`./mvnw verify`, 
 
 Stack: Vitest + `jsdom`, [`webapp/vitest.setup.ts`](../../webapp/vitest.setup.ts), tests as `src/**/*.test.{ts,tsx}`. Coverage thresholds in [`webapp/vitest.config.ts`](../../webapp/vitest.config.ts) apply to instrumented product code (`coverage.include` / `coverage.exclude`): **80%** lines, statements, functions, and branches. Component and hook tests should follow the same **behavior-first** philosophy as `src/lib` modules.
 
-**Principle:** If a real user cannot perceive it, the test should not depend on it—except for pure modules under `src/lib`, where unit tests without DOM are appropriate.
+**Principle:** If a real user cannot perceive it, the test should not depend on it-except for pure modules under `src/lib`, where unit tests without DOM are appropriate.
 
 ### What to test (observable)
 
@@ -86,11 +86,11 @@ Stack: Vitest + `jsdom`, [`webapp/vitest.setup.ts`](../../webapp/vitest.setup.ts
 | **Render** | Roles, accessible names, visible text, initial disabled/enabled state. Use `screen` and queries that mirror assistive tech. |
 | **Interaction** | `userEvent.setup()` then `await user.click` / `type`. Assert **outcomes** (error message, navigation side effects visible in UI), not internal state. |
 | **State** | Assert via DOM (`aria-*`, text), not by importing hooks or setters. |
-| **Effects** | After `findBy*` / `waitFor`, assert loaders, loaded data, or error UI—not ref churn or effect call counts. |
+| **Effects** | After `findBy*` / `waitFor`, assert loaders, loaded data, or error UI-not ref churn or effect call counts. |
 
 ### What not to test
 
-- Internal CSS classes, Tailwind strings, or large HTML snapshots (unless accessibility is the only contract—then prefer role/label).
+- Internal CSS classes, Tailwind strings, or large HTML snapshots (unless accessibility is the only contract-then prefer role/label).
 - Trivial getters or identity maps; cover business logic in `src/lib` or indirectly.
 - Duplicating full Playwright flows; RTL stays **component- or screen-scoped** with mocks at boundaries.
 
@@ -132,7 +132,7 @@ Stack: Vitest + `jsdom`, [`webapp/vitest.setup.ts`](../../webapp/vitest.setup.ts
 - `container.querySelector('.css-class')` as the main assertion.
 - `expect(instance.state)` or over-specifying hook internals (use `renderHook` only for reusable hooks without UI).
 - Default `fireEvent` when `userEvent` suffices.
-- Mocks that only return success—also cover loading and error paths.
+- Mocks that only return success-also cover loading and error paths.
 
 ### Shared utilities (deferred)
 

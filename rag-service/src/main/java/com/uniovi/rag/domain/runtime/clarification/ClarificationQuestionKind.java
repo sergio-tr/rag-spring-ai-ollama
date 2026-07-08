@@ -22,7 +22,16 @@ public enum ClarificationQuestionKind {
             case MULTIPLE_ENTITY_CANDIDATES -> "Which of these entities do you mean?";
             case CONFLICTING_CUES -> "Your request contains conflicting cues. Which interpretation should I use?";
             case GENERIC_MISSING_INFORMATION ->
-                    "I need one more detail to answer correctly. What specific item should I use?";
+                    "Necesito un detalle más para responder con precisión. ¿Qué dato concreto debo usar?";
         };
+    }
+
+    /** All frozen clarification templates for prompt bundle fingerprinting. */
+    public static String fingerprintMaterial() {
+        StringBuilder sb = new StringBuilder();
+        for (ClarificationQuestionKind kind : values()) {
+            sb.append(kind.name()).append('=').append(kind.templateText()).append('\n');
+        }
+        return sb.toString();
     }
 }

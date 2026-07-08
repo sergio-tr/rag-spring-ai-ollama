@@ -16,8 +16,9 @@ public class CorpusGroundedDirectWorkflow extends FullCorpusWorkflow {
             RagLlmChatInvoker llmChatInvoker,
             SnapshotCorpusAssembler snapshotCorpusAssembler,
             RuntimePromptBudgeter promptBudgeter,
+            RuntimeAnswerPromptResolver answerPromptResolver,
             @Autowired(required = false) ObservabilitySupport observability) {
-        super(llmChatInvoker, snapshotCorpusAssembler, promptBudgeter, observability);
+        super(llmChatInvoker, snapshotCorpusAssembler, promptBudgeter, answerPromptResolver, observability);
     }
 
     @Override

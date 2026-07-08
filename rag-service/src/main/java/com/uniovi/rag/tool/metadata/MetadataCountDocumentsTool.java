@@ -74,11 +74,13 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
                 (isTopicMeetingCountQuery(query) || isTopicPresenceCountQuery(query))
                         && extractTopicFromQuery(query, ner) != null;
 
+        PersonActaCountQuery personActaQueryEarly = detectPersonActaCountQuery(query, ner);
+
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
         long startTime = System.currentTimeMillis();
         List<Document> docs =
-                topicCountQuery
-                        ? retrieveCorpusDocumentsWithFallback(query, COUNT_RETRIEVAL_FIELDS)
+                topicCountQuery || personActaQueryEarly != null
+                        ? retrieveWithSmallCorpusFullScanIfEligible(query, COUNT_RETRIEVAL_FIELDS, ner)
                         : retrieveDocumentsWithFallback(query, COUNT_RETRIEVAL_FIELDS, ner);
 
         ToolResult early = exitWhenDateSpecifiedButNoDocuments(query, ner, docs);
@@ -185,6 +187,9 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         
         // Step 5: Generate enhanced count answer
         String answer = generateEnhancedCountAnswer(query, analysis);
+        if (!relevantMinutes.isEmpty()) {
+            publishMatchedMinutesContext(relevantMinutes, true);
+        }
         long totalTime = System.currentTimeMillis() - startTime;
         log().info("Generated count answer for query: '{}' with {} documents (total execution time: {} ms)", 
                   query, analysis.getTotalCount(), totalTime);
@@ -420,11 +425,14 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
                 q.contains("cuántas")
                         || q.contains("cuantas")
                         || q.contains("en cuántas")
-                        || q.contains("en cuantas");
+                        || q.contains("en cuantas")
+                        || q.contains("how many");
         boolean topicMention =
                 q.contains("se habló")
                         || q.contains("se hablo")
-                        || q.contains("mencion");
+                        || q.contains("mencion")
+                        || q.contains("mention")
+                        || q.contains("discuss");
         return countCue && topicMention;
     }
 
@@ -454,6 +462,9 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         }
         List<Minute> matching =
                 minutes.stream().filter(m -> minuteMentionsTopicEvidence(m, topic, evidenceByKey)).toList();
+        if (!matching.isEmpty()) {
+            publishMatchedMinutesContext(matching, true);
+        }
         String answer = StructuredMinuteMetadataSupport.formatTopicMeetingCountAnswer(query, matching, topic);
         return ToolResult.from(formatResponse(answer, query), getClass());
     }

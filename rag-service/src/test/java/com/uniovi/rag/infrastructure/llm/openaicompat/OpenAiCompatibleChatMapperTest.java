@@ -32,6 +32,78 @@ class OpenAiCompatibleChatMapperTest {
     }
 
     @Test
+    void toApiRequest_omitsThinkUnlessExplicitOrInjectedByFilter() {
+        LlmChatRequest request =
+                LlmChatRequest.of("qwen3.5:2b", "sys", "Responde únicamente con la palabra OK.", 0.0, 5_000, Map.of());
+
+        OpenAiChatCompletionRequest apiRequest = OpenAiCompatibleChatMapper.toApiRequest(request);
+
+        assertEquals(null, apiRequest.think());
+    }
+
+    @Test
+    void toApiRequest_honorsExplicitThinkOverride() {
+        LlmChatRequest request =
+                LlmChatRequest.of("qwen3.5:2b", "sys", "user", 0.0, 5_000, Map.of("think", true));
+
+        OpenAiChatCompletionRequest apiRequest = OpenAiCompatibleChatMapper.toApiRequest(request);
+
+        assertEquals(Boolean.TRUE, apiRequest.think());
+    }
+
+    @Test
+    void toApiRequest_mapsSupportedAdditionalParameters() {
+        LlmChatRequest request =
+                LlmChatRequest.of(
+                        "gpt-oss:20b",
+                        "sys",
+                        "user",
+                        0.0,
+                        null,
+                        Map.of(
+                                "top_p", 0.85,
+                                "maxTokens", 256,
+                                "stop", List.of("END"),
+                                "presencePenalty", -0.1,
+                                "frequencyPenalty", 0.2,
+                                "seed", 42,
+                                "responseFormat", Map.of("type", "json_object")));
+
+        OpenAiChatCompletionRequest apiRequest = OpenAiCompatibleChatMapper.toApiRequest(request);
+
+        assertEquals(0.85, apiRequest.topP());
+        assertEquals(256, apiRequest.maxTokens());
+        assertEquals(List.of("END"), apiRequest.stop());
+        assertEquals(-0.1, apiRequest.presencePenalty());
+        assertEquals(0.2, apiRequest.frequencyPenalty());
+        assertEquals(42, apiRequest.seed());
+        assertInstanceOf(Map.class, apiRequest.responseFormat());
+        assertEquals("json_object", ((Map<?, ?>) apiRequest.responseFormat()).get("type"));
+    }
+
+    @Test
+    void toApiRequest_ignoresUnsupportedResponseFormatString() {
+        LlmChatRequest request =
+                LlmChatRequest.of("m", "s", "u", null, null, Map.of("responseFormat", "json_object"));
+
+        OpenAiChatCompletionRequest apiRequest = OpenAiCompatibleChatMapper.toApiRequest(request);
+
+        assertEquals(null, apiRequest.responseFormat());
+    }
+
+    @Test
+    void toApiRequest_omitsOllamaOnlyParameters() {
+        LlmChatRequest request =
+                LlmChatRequest.of("m", "s", "u", null, null, Map.of("topK", 40, "numCtx", 8192, "repeatPenalty", 1.1));
+
+        OpenAiChatCompletionRequest apiRequest = OpenAiCompatibleChatMapper.toApiRequest(request);
+
+        assertEquals(null, apiRequest.topP());
+        assertEquals(null, apiRequest.maxTokens());
+        assertEquals(null, apiRequest.seed());
+    }
+
+    @Test
     void toApiRequest_omitsSystemWhenBlank() {
         LlmChatRequest request =
                 new LlmChatRequest(

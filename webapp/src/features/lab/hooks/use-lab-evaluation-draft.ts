@@ -3,6 +3,7 @@
 import {
   clearLabEvaluationDraftStorage,
   computeLabEvaluationDraftWarnings,
+  migrateLabDraftModelsFromCatalog,
   defaultLabEvaluationDraft,
   labEvaluationDraftStorageKey,
   loadLabEvaluationDraftWithSanitationReport,
@@ -44,6 +45,9 @@ function withoutStorageVersion(stored: LabEvaluationDraftStored): Omit<LabEvalua
     followMode: stored.followMode,
     lastEvaluationRunId: stored.lastEvaluationRunId,
     corpusId: stored.corpusId,
+    autoReindex: stored.autoReindex,
+    reuseCompatibleActiveSnapshot: stored.reuseCompatibleActiveSnapshot,
+    benchmarkRuntimeParameters: stored.benchmarkRuntimeParameters,
   };
 }
 
@@ -69,6 +73,28 @@ export function useLabEvaluationDraft(
   const [initial] = useState(() => initialDraftState(kind));
   const [draft, setDraft] = useState(initial.draft);
   const [sanitizedRemovedPresets, setSanitizedRemovedPresets] = useState(initial.sanitizedRemovedPresets);
+
+  useEffect(() => {
+    if (validation.availableLlmModelIds.length === 0 && validation.availableEmbeddingModelIds.length === 0) {
+      return;
+    }
+    queueMicrotask(() => {
+      setDraft((prev) => {
+        const migrated = migrateLabDraftModelsFromCatalog(
+          prev,
+          validation.availableLlmModelIds,
+          validation.availableEmbeddingModelIds,
+          kind,
+        );
+        const changed =
+          migrated.llmModelId !== prev.llmModelId ||
+          migrated.embeddingModelId !== prev.embeddingModelId ||
+          migrated.llmModelIds.join("|") !== prev.llmModelIds.join("|") ||
+          migrated.embeddingModelIds.join("|") !== prev.embeddingModelIds.join("|");
+        return changed ? migrated : prev;
+      });
+    });
+  }, [kind, validation.availableLlmModelIds, validation.availableEmbeddingModelIds]);
 
   useEffect(() => {
     saveLabEvaluationDraft(kind, draft);

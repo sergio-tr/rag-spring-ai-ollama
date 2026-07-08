@@ -1,5 +1,6 @@
 package com.uniovi.rag.configuration;
 
+import com.uniovi.rag.application.config.ConfigurablePromptResolver;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import com.uniovi.rag.infrastructure.observability.TracedDateExistenceGuard;
 import com.uniovi.rag.infrastructure.observability.TracedQueryAnalyser;
@@ -10,6 +11,7 @@ import com.uniovi.rag.infrastructure.observability.TracedResponseRanker;
 import com.uniovi.rag.infrastructure.observability.TracedResponseValidator;
 import com.uniovi.rag.application.service.runtime.query.guard.QueryDateExtractor;
 import com.uniovi.rag.application.service.runtime.query.analyser.QueryAnalyser;
+import com.uniovi.rag.application.service.llm.ProviderAwareSecondaryLlmExecutor;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
 import com.uniovi.rag.application.service.runtime.query.expand.QueryExpander;
 import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
@@ -38,16 +40,17 @@ class RagQueryConfigurationObservabilityWiringTest {
 
         RagReasoningProperties reasoningProps = new RagReasoningProperties();
         reasoningProps.setStrategy(null); // Default: SIMPLE
-        ReasoningStrategy reasoningStrategy = config.reasoningStrategy(reasoningProps, mock(ChatClient.class), observability);
+        ReasoningStrategy reasoningStrategy = config.reasoningStrategy(reasoningProps, mock(ProviderAwareSecondaryLlmExecutor.class), observability);
         assertInstanceOf(TracedReasoningStrategy.class, reasoningStrategy);
 
         RagRankerProperties rankerProps = new RagRankerProperties();
         rankerProps.setStrategy("FAITHFULNESS");
-        ResponseRanker responseRanker = config.responseRanker(rankerProps, mock(ChatClient.class), observability);
+        ResponseRanker responseRanker = config.responseRanker(rankerProps, mock(ProviderAwareSecondaryLlmExecutor.class), mock(ConfigurablePromptResolver.class), observability);
         assertInstanceOf(TracedResponseRanker.class, responseRanker);
 
         QueryExpander queryExpander = config.queryExpander(
-                mock(ChatClient.class),
+                mock(ProviderAwareSecondaryLlmExecutor.class),
+                mock(ConfigurablePromptResolver.class),
                 "COT",
                 1,
                 350,
@@ -70,7 +73,11 @@ class RagQueryConfigurationObservabilityWiringTest {
 
         RagImplementationProperties implProps = new RagImplementationProperties();
         implProps.setAnalyserImpl("no-op");
-        QueryAnalyser analyser = config.queryAnalyser(mock(ChatClient.class), implProps, observability);
+        QueryAnalyser analyser = config.queryAnalyser(
+                mock(ProviderAwareSecondaryLlmExecutor.class),
+                mock(ConfigurablePromptResolver.class),
+                implProps,
+                observability);
         assertInstanceOf(TracedQueryAnalyser.class, analyser);
 
         var retriever = mock(ContextRetriever.class);

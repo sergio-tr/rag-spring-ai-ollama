@@ -37,7 +37,17 @@ public record QueryConstraintSignals(
                     "presidid[ao]s?\\s+por\\s+([\\p{L}]+(?:\\s+[\\p{L}]+){0,4})",
                     Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Set<String> STOP_TOPICS =
-            Set.of("reunion", "reuniones", "acta", "actas", "documento", "documentos", "asunto", "tema");
+            Set.of(
+                    "reunion",
+                    "reuniones",
+                    "acta",
+                    "actas",
+                    "documento",
+                    "documentos",
+                    "asunto",
+                    "tema",
+                    "problemas",
+                    "problema");
 
     public static QueryConstraintSignals fromPlan(QueryPlan plan) {
         String query = combinedQueryText(plan).toLowerCase(Locale.ROOT);
@@ -98,6 +108,8 @@ public record QueryConstraintSignals(
         boolean filterAndList =
                 query.contains("qué actas")
                         || query.contains("que actas")
+                        || query.contains("listar las actas")
+                        || query.contains("listar actas")
                         || query.contains("qué reuniones")
                         || query.contains("que reuniones")
                         || query.contains("dime qué actas")

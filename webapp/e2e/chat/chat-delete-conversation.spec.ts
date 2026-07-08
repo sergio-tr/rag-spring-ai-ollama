@@ -9,7 +9,7 @@ import {
 
 /**
  * Destructive chat delete from the current Chat configuration panel with confirmation dialog.
- * Uses a unique conversation title scoped to the conversation list — no global getByText on message bodies.
+ * Uses a unique conversation title scoped to the conversation list - no global getByText on message bodies.
  */
 test.describe("Chat delete conversation @fullstack", () => {
   test("delete chat opens dialog, confirm removes conversation @fullstack", async ({ page }) => {

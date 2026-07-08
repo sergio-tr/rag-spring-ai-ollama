@@ -38,7 +38,22 @@ public final class ExperimentalDatasetTemplateFactory {
     private static byte[] buildLlmBaseline() throws IOException {
         XSSFWorkbook wb = new XSSFWorkbook();
         Sheet sheet = wb.createSheet(WorkbookSheetNames.LLM_READER_QUESTIONS);
-        headerRow(sheet, "id", "question");
+        headerRow(sheet, "id", "question", "context_text", "expected_answer", "evaluation_notes");
+        Sheet roleCases = wb.createSheet(WorkbookSheetNames.LLM_ROLE_EVAL_CASES);
+        headerRow(
+                roleCases,
+                "case_id",
+                "subset",
+                "role_family",
+                "role_profile",
+                "input",
+                "context",
+                "expected_output",
+                "expected_keywords",
+                "forbidden_terms",
+                "scoring_type",
+                "required_json_keys",
+                "notes");
         return toBytes(wb);
     }
 
@@ -47,14 +62,29 @@ public final class ExperimentalDatasetTemplateFactory {
         Sheet chunk = wb.createSheet(WorkbookSheetNames.CHUNK_REGISTRY);
         headerRow(chunk, "chunk_id", "document_id");
         Sheet emb = wb.createSheet(WorkbookSheetNames.EMBEDDING_RETRIEVAL_QUERIES);
-        headerRow(emb, "id", "query");
+        headerRow(
+                emb,
+                "id",
+                "query",
+                "expected_document_id",
+                "expected_chunk_id",
+                "expected_content",
+                "expected_relevant_chunk_ids",
+                "evaluation_notes");
         return toBytes(wb);
     }
 
     private static byte[] buildRagPresetBenchmark() throws IOException {
         XSSFWorkbook wb = new XSSFWorkbook();
         Sheet rag = wb.createSheet(WorkbookSheetNames.RAG_PRESET_QUESTIONS_ENRICHED);
-        headerRow(rag, "id", "question");
+        headerRow(
+                rag,
+                "id",
+                "question",
+                "expected_answer",
+                "expected_sources",
+                "context_text",
+                "evaluation_notes");
         return toBytes(wb);
     }
 

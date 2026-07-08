@@ -1,7 +1,7 @@
 # RAG Spring AI Ollama
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     BADGES — selected GitHub Actions (native badge.svg, default branch)
+     BADGES - selected GitHub Actions (native badge.svg, default branch)
      ═══════════════════════════════════════════════════════════════════════════ -->
 
 [![CI](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/ci.yml/badge.svg)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/ci.yml)
@@ -28,11 +28,11 @@
 
 ---
 
-RAG (Retrieval-Augmented Generation) system built with **Spring Boot**, **Spring AI**, **Ollama**, and **PostgreSQL + pgvector**. Includes a trainable query-type classifier exposed as an HTTP microservice (FastAPI + TensorFlow).
+RAG (Retrieval-Augmented Generation) system built with **Spring Boot**, **Spring AI**, **LiteLLM** (configured API catalog), and **PostgreSQL + pgvector**. Includes a trainable query-type classifier exposed as an HTTP microservice (FastAPI; default **scikit-learn** model, optional Keras training path).
 
 **Documentation:** global architecture, domain, and governance live in **[`docs/README.md`](docs/README.md)** (policy layers and non-canonical areas: [`docs/development/documentation-governance-strategy.md`](docs/development/documentation-governance-strategy.md)). Per-module setup and commands live in each folder’s **README** (see table below).
 
-**Quality baseline:** canonical commands + CI parity — [`docs/testing/baseline-runbook.md`](docs/testing/baseline-runbook.md); hub (exclusions, policies, Sonar links) — [`docs/quality/README.md`](docs/quality/README.md).
+**Quality baseline:** canonical commands + CI parity - [`docs/testing/baseline-runbook.md`](docs/testing/baseline-runbook.md); hub (exclusions, policies, Sonar links) - [`docs/quality/README.md`](docs/quality/README.md).
 
 **CI pull requests, job gates, Docker/Compose pins:** [`docs/devops/README.md`](docs/devops/README.md).
 
@@ -106,7 +106,7 @@ Prefix is **configurable**. Spring: `rag.api.product-base-path` (`RAG_API_PRODUC
 | `GET` | `{product}/lab/status` | Lab capability stub (authenticated) |
 | `GET` | `{product}/admin/health` | Admin health (`403` unless JWT role `ADMIN`) |
 
-**Ollama URL:** set `SPRING_AI_OLLAMA_BASE_URL` (alias `OLLAMA_BASE_URL`) to the Ollama HTTP API — for example `http://127.0.0.1:11434` on the host. See [docs/operations/environments.md](docs/operations/environments.md) and [rag-service/README.md](rag-service/README.md) for more details.
+**Ollama URL:** set `SPRING_AI_OLLAMA_BASE_URL` (alias `OLLAMA_BASE_URL`) to the Ollama HTTP API - for example `http://127.0.0.1:11434` on the host. See [docs/operations/environments.md](docs/operations/environments.md) and [rag-service/README.md](rag-service/README.md) for more details.
 
 **Generated docs:** Javadoc: `cd rag-service && ./mvnw javadoc:javadoc` → `rag-service/target/site/apidocs`. OpenAPI: `/v3/api-docs` when springdoc is enabled; export with [`rag-service/scripts/export-openapi.sh`](rag-service/scripts/export-openapi.sh). CI may write `openapi.json` during `verify` when a Postgres datasource is available. TypeDoc: `cd webapp && npm run doc` → `webapp/docs/api`. See [docs/README.md](docs/README.md) (auto-generated API docs).
 
@@ -118,7 +118,7 @@ Classifier endpoints: `POST /classify`, `GET /models`, `POST /train`, `POST /eva
 
 Analysis is driven by [`sonar-project.properties`](sonar-project.properties) and [`.github/workflows/sonar.yml`](.github/workflows/sonar.yml). Set `sonar.projectKey` and `sonar.organization` to match your SonarCloud project, and add a **`SONAR_TOKEN`** repository secret (SonarCloud → *My Account → Security*).
 
-**Local scan (same steps as CI):** [`docs/development/sonar-local-analysis.md`](docs/development/sonar-local-analysis.md) — script [`.github/local/sonar-local.sh`](.github/local/sonar-local.sh). Requires Postgres + Docker for the scanner image; set `SONAR_TOKEN` in the environment.
+**Local scan (same steps as CI):** [`docs/development/sonar-local-analysis.md`](docs/development/sonar-local-analysis.md) - script [`.github/local/sonar-local.sh`](.github/local/sonar-local.sh). Requires Postgres + Docker for the scanner image; set `SONAR_TOKEN` in the environment.
 
 **Branches:** pushes and PRs to `main` / `dev` trigger analysis. In SonarCloud, set the main branch to `main` (*Project → Administration → Branches and Pull Requests*) so **New Code** is computed correctly.
 
@@ -178,12 +178,58 @@ Production credentials must always come from environment / `.env` files, not fro
 
 **SonarCloud:** quality gate, CI setup, and hotspot policy are documented in the [SonarCloud](#sonarcloud-quality-gate-and-static-analysis) section above (extended notes may exist only in a local `docs/` copy).
 
+## Production deployment
+
+The system is deployed inside the **University of Oviedo** network. External access may require **VPN** or on-campus connectivity.
+
+| Role | Host |
+| --- | --- |
+| Application server (Docker Compose + self-hosted runner) | `156.35.95.27` |
+| Model-serving server (LiteLLM → Ollama) | `156.35.160.78` |
+
+**Architecture:** A **self-hosted GitHub Actions runner** on the application server checks out the repository locally and runs Docker Compose. GitHub does **not** open inbound SSH to the university machine; the runner maintains **outbound HTTPS** to GitHub.
+
+**Model serving:** The backend consumes **LiteLLM** only through an **OpenAI-compatible API** on the model-serving server. **Ollama** runs behind LiteLLM and is **not** called directly by the production backend (`OPENAI_COMPATIBLE` provider).
+
+**Email:** Production uses real **SMTP** delivery via `support.rag@gmail.es`. **Mailpit** is development-only.
+
+**Authentication:** **Google OAuth** in production (backend-owned flow).
+
+**Legal:** Privacy Policy and Terms of Use are available at `{FRONTEND_PUBLIC_URL}/en/privacy-policy` and `{FRONTEND_PUBLIC_URL}/en/terms` (replace with the deployed URL).
+
+**Observability:** Enabled in production deploy (`--obs --obs-private`); Grafana/Jaeger/Prometheus are internal to the Docker network.
+
+### URLs and workflows
+
+| Item | Value |
+| --- | --- |
+| Production application URL | TODO - set after DNS/TLS |
+| Backend API URL | TODO - same-origin via reverse proxy when applicable |
+| Privacy Policy | `{FRONTEND_PUBLIC_URL}/en/privacy-policy` |
+| Terms of Use | `{FRONTEND_PUBLIC_URL}/en/terms` |
+| GitHub Pages documentation | [https://sergio-tr.github.io/rag-spring-ai-ollama/](https://sergio-tr.github.io/rag-spring-ai-ollama/) |
+| Deploy workflow | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) (`push` to `main` or manual) |
+| Documentation workflow | [`.github/workflows/docs-pages.yml`](.github/workflows/docs-pages.yml) |
+| Runner check workflow | [`.github/workflows/self-hosted-runner-check.yml`](.github/workflows/self-hosted-runner-check.yml) |
+
+**Repository settings:** Configure GitHub **Variables** `DEPLOY_DIR` and `DEPLOY_HEALTH_URL`. Enable **Pages → Source → GitHub Actions**. Prefer **branch protection** on `main` requiring CI before merge (deploy relies on validated `main`).
+
+**Server command (operator):**
+
+```bash
+./docker/scripts/up.sh prod --server --obs --obs-private --no-env-prompt
+```
+
+**Environment template:** [`.env.example`](.env.example) (index) and per-component `.env.example` files. Copy to `.env` on the server; never commit secrets.
+
+**Detail:** [docs/operations/runbook-docker-vm.md](docs/operations/runbook-docker-vm.md), [docs/operations/deploy-workflow-audit.md](docs/operations/deploy-workflow-audit.md), [docker/README.md](docker/README.md).
+
 ## Tech stack
 
 **Backend**: Spring Boot · Spring AI · Java · Maven · Flyway · JaCoCo  
-**Classifier**: FastAPI · TensorFlow/Keras · Python 3.11 · pytest-cov  
+**Classifier**: FastAPI · scikit-learn (default) / TensorFlow-Keras (training path) · Python 3.11 · pytest-cov  
 **Database**: PostgreSQL + pgvector  
-**LLM runtime**: Ollama (local, GPU-optional)  
+**LLM runtime**: LiteLLM (production, OpenAI-compatible) · Ollama (development / behind LiteLLM on model server)  
 **Observability**: OpenTelemetry · Jaeger · Prometheus · Grafana · Loki  
 **Infrastructure**: Docker · Docker Compose · Nginx  
 **CI/CD**: GitHub Actions · SonarCloud · GHCR  

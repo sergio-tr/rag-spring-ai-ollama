@@ -5,6 +5,7 @@ import com.uniovi.rag.application.service.runtime.document.extraction.DocumentCo
 import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import com.uniovi.rag.tool.ToolExecutionContext;
+import com.uniovi.rag.application.service.runtime.query.ClassifierOverrides;
 import com.uniovi.rag.tool.ToolResult;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,8 +14,7 @@ import org.springframework.ai.chat.client.ChatClient;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 class MetadataCompareToolTest {
@@ -34,14 +34,24 @@ class MetadataCompareToolTest {
         when(retriever.retrieveWithMetadataFilters(anyString(), any(JSONObject.class))).thenReturn(List.of());
         MetadataLlmResponseCacheService llmCache = mock(MetadataLlmResponseCacheService.class);
         when(llmCache.getCachedResponse(anyString())).thenReturn("");
+        when(llmCache.getCachedResponse(anyString(), anyString())).thenReturn("NONE");
         tool = new MetadataCompareTool(chatClient, retriever, extractor, llmCache);
     }
 
     @Test
     void execute_emptyRetrieval_returnsToolResult() {
         ToolResult result = tool.execute(ToolExecutionContext.of("comparar", QueryType.COMPARE, null));
-        assertNotNull(result);
-        assertNotNull(result.result());
-        assertEquals("MetadataCompareTool", result.source());
+        assertThat(result).isNotNull();
+        assertThat(result.result()).isNotNull();
+        assertThat(result.source()).isEqualTo("MetadataCompareTool");
+    }
+
+    @Test
+    void proposalsFebVsAug_routesToCompare() {
+        assertThat(
+                        ClassifierOverrides.apply(
+                                "Compara la cantidad de propuestas presentadas en febrero y agosto.",
+                                QueryType.COUNT_DOCUMENTS))
+                .isEqualTo(QueryType.COMPARE);
     }
 }

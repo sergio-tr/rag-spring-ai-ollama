@@ -4,7 +4,7 @@ import { preflightLabE2eHarness } from "../support/lab-harness";
 const evidenceDir =
   process.env.E2E_HARNESS_EVIDENCE_DIR ??
   process.env.E2E_EVIDENCE_DIR ??
-  ".cursor/evidence/wave-1-current/e2e";
+  "../../../docs/evidence/wave-1-current/e2e";
 
 test.describe("LAB E2E harness preflight @preflight @lab-harness", () => {
   test("proxy/web/backend/auth/active-jobs cleanup/LAB route", async ({ page, request }) => {

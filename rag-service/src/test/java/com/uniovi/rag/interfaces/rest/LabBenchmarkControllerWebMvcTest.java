@@ -27,7 +27,11 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
+import org.hamcrest.Matchers;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -41,6 +45,7 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -86,6 +91,42 @@ class LabBenchmarkControllerWebMvcTest {
     @AfterEach
     void clear() {
         SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void postBenchmark_singleLlmModelId_returns202WithoutCampaign() throws Exception {
+        UUID runId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        UUID ds = UUID.randomUUID();
+        when(benchmarkRunOrchestrator.startJsonBenchmark(
+                        eq(userId), eq("USER"), eq(BenchmarkKind.LLM_JUDGE_QA), any(StartBenchmarkRunRequest.class)))
+                .thenReturn(BenchmarkJobAccepted.of(runId, taskId));
+
+        String body =
+                String.format(
+                        "{\"datasetId\":\"%s\",\"runKind\":\"PRODUCT_EXPLORATION\",\"llmModelId\":\"gpt-oss:20b\"}",
+                        ds);
+
+        mockMvc.perform(post(path("/lab/benchmarks/LLM_JUDGE_QA/runs"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.evaluationRunId").value(runId.toString()))
+                .andExpect(jsonPath("$.campaignId").doesNotExist());
+    }
+
+    @Test
+    void compareMetrics_rejectsSingleRunId() throws Exception {
+        UUID a = UUID.randomUUID();
+        when(labMetricsComparisonService.compareMetrics(eq(userId), eq(List.of(a)), isNull(), isNull()))
+                .thenThrow(new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Provide at least two runIds"));
+
+        mockMvc.perform(
+                        post(path("/lab/runs/compare/metrics"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"runIds\":[\"" + a + "\"]}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -274,9 +315,9 @@ class LabBenchmarkControllerWebMvcTest {
                         240,
                         List.of(
                                 new CampaignChildRunSummaryDto(
-                                        runId, "P0", "Direct LLM", "P0 — Direct LLM", "gemma3:4b", "DONE", 60),
+                                        runId, "P0", "Direct LLM", "P0 - Direct LLM", "gemma3:4b", "DONE", 60),
                                 new CampaignChildRunSummaryDto(
-                                        UUID.randomUUID(), "P1", "Full corpus", "P1 — Full corpus", "gemma3:4b", "DONE", 60)));
+                                        UUID.randomUUID(), "P1", "Full corpus", "P1 - Full corpus", "gemma3:4b", "DONE", 60)));
         when(labEvaluationRunService.getRun(userId, runId)).thenReturn(dto);
 
         mockMvc.perform(get(path("/lab/runs/") + runId))
@@ -343,6 +384,34 @@ class LabBenchmarkControllerWebMvcTest {
                 .andExpect(jsonPath("$.campaignId").value(campaignId.toString()))
                 .andExpect(jsonPath("$.persistedItemCount").value(240))
                 .andExpect(jsonPath("$.campaignChildRunIds.length()").value(2));
+    }
+
+    @Test
+    void exportV1ResultsJson_returnsCanonicalExport() throws Exception {
+        UUID runId = UUID.randomUUID();
+        Map<String, Object> payload =
+                Map.of(
+                        "exportSchemaVersion", "1",
+                        "provider", Map.of("chatProvider", "OPENAI_COMPATIBLE"),
+                        "manifest", Map.of("manifestSchemaVersion", "1"));
+        when(labEvaluationRunService.exportResultsJsonV1(userId, runId)).thenReturn(payload);
+
+        mockMvc.perform(get(path("/lab/runs/") + runId + "/export/v1/results.json"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.exportSchemaVersion").value("1"))
+                .andExpect(jsonPath("$.provider.chatProvider").value("OPENAI_COMPATIBLE"))
+                .andExpect(jsonPath("$.manifest.manifestSchemaVersion").value("1"));
+    }
+
+    @Test
+    void exportV1FullBundleZip_returnsZipAttachment() throws Exception {
+        UUID runId = UUID.randomUUID();
+        when(labEvaluationRunService.exportFullBundleZipV1(userId, runId)).thenReturn(new byte[] {0x50, 0x4b, 0x03, 0x04});
+
+        mockMvc.perform(get(path("/lab/runs/") + runId + "/export/v1/full-bundle.zip"))
+                .andExpect(status().isOk())
+                .andExpect(MockMvcResultMatchers.header()
+                        .string("Content-Disposition", Matchers.containsString("full-bundle.zip")));
     }
 
     @Test

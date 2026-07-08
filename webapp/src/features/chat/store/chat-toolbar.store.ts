@@ -3,8 +3,12 @@
 import { create } from "zustand";
 import type {
   ChatRuntimeStateDto,
+  CompatibleExperimentalPresetDto,
+  CompatibleProductPresetDto,
   ExperimentalPresetCatalogItemDto,
-  ModelsCatalogResponse,
+  MeSelectableLlmModelDto,
+  LlmProvider,
+  ProjectCompatiblePresetsDto,
   ProjectDocumentDto,
   RagPresetDto,
 } from "@/types/api";
@@ -21,7 +25,9 @@ export type ChatToolbarApi = {
   setLlmModelChoice: (v: string) => void;
   classifierModelChoice: string;
   setClassifierModelChoice: (v: string) => void;
-  modelsCatalog: ModelsCatalogResponse | undefined;
+  selectableLlmModels: MeSelectableLlmModelDto[];
+  selectableLlmModelsLoading: boolean;
+  selectableLlmModelsEffectiveProvider: LlmProvider | undefined;
   modelsError: boolean;
   modelsErrorMessage: string;
   presetSelectValue: string;
@@ -29,6 +35,9 @@ export type ChatToolbarApi = {
   presets: RagPresetDto[] | undefined;
   presetsError: boolean;
   presetsLoading: boolean;
+  projectCompatiblePresets: ProjectCompatiblePresetsDto | null;
+  compatibleProductPresets: CompatibleProductPresetDto[] | undefined;
+  compatibleExperimentalPresets: CompatibleExperimentalPresetDto[] | undefined;
   experimentalPresets: ExperimentalPresetCatalogItemDto[] | undefined;
   experimentalPresetsLoading: boolean;
   experimentalPresetsError: boolean;

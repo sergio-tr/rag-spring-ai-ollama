@@ -1,7 +1,9 @@
 package com.uniovi.rag.application.service.knowledge;
 
+import com.uniovi.rag.application.service.config.llm.ResolvedLlmConfigResolver;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
+import com.uniovi.rag.application.service.llm.catalog.EmbeddingModelCatalogResolver;
 import com.uniovi.rag.infrastructure.llm.LlmProperties;
 import com.uniovi.rag.infrastructure.persistence.ProjectIndexProfileRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectIndexProfileEntity;
@@ -18,16 +20,22 @@ public class ProjectIndexProfileService {
     private final String defaultEmbeddingModelId;
     private final int defaultChunkMaxChars;
     private final MaterializationStrategy defaultMaterializationStrategy;
+    private final EmbeddingModelCatalogResolver embeddingModelCatalogResolver;
+    private final ResolvedLlmConfigResolver llmConfigResolver;
 
     public ProjectIndexProfileService(
             ProjectIndexProfileRepository repository,
             LlmProperties llmProperties,
+            EmbeddingModelCatalogResolver embeddingModelCatalogResolver,
+            ResolvedLlmConfigResolver llmConfigResolver,
             @Value("${rag.chunk.max-chars:400}") int defaultChunkMaxChars,
             @Value("${rag.knowledge.materialization-strategy:CHUNK_LEVEL}") String defaultMaterializationStrategyRaw) {
         this.repository = repository;
         this.defaultEmbeddingModelId = llmProperties.effectiveDefaultEmbeddingModel();
         this.defaultChunkMaxChars = defaultChunkMaxChars > 0 ? defaultChunkMaxChars : 400;
         this.defaultMaterializationStrategy = parseStrategy(defaultMaterializationStrategyRaw);
+        this.embeddingModelCatalogResolver = embeddingModelCatalogResolver;
+        this.llmConfigResolver = llmConfigResolver;
     }
 
     public ProjectIndexProfile ensureDefault(UUID projectId) {
@@ -35,10 +43,11 @@ public class ProjectIndexProfileService {
     }
 
     public Optional<ProjectIndexProfile> find(UUID projectId) {
-        return repository.findById(projectId).map(ProjectIndexProfileService::toDomain);
+        return repository.findById(projectId).map(this::toResolvedDomain);
     }
 
     public ProjectIndexProfile upsert(
+            UUID userId,
             UUID projectId,
             MaterializationStrategy materializationStrategy,
             boolean metadataEnabled,
@@ -56,7 +65,7 @@ public class ProjectIndexProfileService {
         e.setMaterializationStrategy((materializationStrategy != null ? materializationStrategy : defaultMaterializationStrategy).name());
         e.setMetadataEnabled(metadataEnabled);
         e.setMetadataProfile(metadataProfile);
-        e.setEmbeddingModelId((embeddingModelId != null && !embeddingModelId.isBlank()) ? embeddingModelId.trim() : defaultEmbeddingModelId);
+        e.setEmbeddingModelId(resolveEmbeddingModelId(userId, embeddingModelId));
         e.setChunkMaxChars(chunkMaxChars > 0 ? chunkMaxChars : defaultChunkMaxChars);
         e.setChunkOverlap(chunkOverlap);
         e.setProfileHash(
@@ -67,11 +76,48 @@ public class ProjectIndexProfileService {
                         e.getEmbeddingModelId(),
                         e.getChunkMaxChars(),
                         chunkOverlap));
-        return toDomain(repository.save(e));
+        return toResolvedDomain(repository.save(e));
+    }
+
+    private ProjectIndexProfile toResolvedDomain(ProjectIndexProfileEntity e) {
+        ProjectIndexProfile base = toDomain(e);
+        String resolvedEmbedding = resolveEmbeddingModelId(null, base.embeddingModelId());
+        if (resolvedEmbedding.equals(base.embeddingModelId())) {
+            return base;
+        }
+        return new ProjectIndexProfile(
+                base.projectId(),
+                base.materializationStrategy(),
+                base.metadataEnabled(),
+                base.metadataProfile(),
+                resolvedEmbedding,
+                base.chunkMaxChars(),
+                base.chunkOverlap(),
+                base.profileHash(),
+                base.createdAt(),
+                base.updatedAt());
+    }
+
+    private String resolveEmbeddingModelId(UUID userId, String embeddingModelId) {
+        if (embeddingModelId != null && !embeddingModelId.isBlank()) {
+            return embeddingModelCatalogResolver.resolveForEffectiveProvider(embeddingModelId.trim());
+        }
+        if (userId != null) {
+            String userModel = blankToNull(llmConfigResolver.resolve(userId, null, null).embeddingModel());
+            if (userModel != null) {
+                return embeddingModelCatalogResolver.resolveForEffectiveProvider(userModel);
+            }
+        }
+        return embeddingModelCatalogResolver.resolveForEffectiveProvider(defaultEmbeddingModelId);
+    }
+
+    private static String blankToNull(String value) {
+        return value != null && !value.isBlank() ? value.trim() : null;
     }
 
     private ProjectIndexProfile createDefault(UUID projectId) {
         return upsert(
+                null,
                 projectId,
                 defaultMaterializationStrategy,
                 false,
@@ -83,12 +129,13 @@ public class ProjectIndexProfileService {
 
     private static ProjectIndexProfile toDomain(ProjectIndexProfileEntity e) {
         MaterializationStrategy strat = parseStrategy(e.getMaterializationStrategy());
+        String embeddingModelId = e.getEmbeddingModelId();
         return new ProjectIndexProfile(
                 e.getProjectId(),
                 strat,
                 e.isMetadataEnabled(),
                 e.getMetadataProfile(),
-                e.getEmbeddingModelId(),
+                embeddingModelId,
                 e.getChunkMaxChars(),
                 e.getChunkOverlap(),
                 e.getProfileHash(),

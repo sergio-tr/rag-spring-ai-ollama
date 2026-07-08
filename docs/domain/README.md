@@ -4,7 +4,7 @@ This folder holds **conceptual** descriptions of the problem domain. Physical sc
 
 ## Contents
 
-- [Conceptual model](conceptual-model.md) — aggregates and responsibilities at a glance.
+- [Conceptual model](conceptual-model.md) - aggregates and responsibilities at a glance.
 - **Persistent schema (ER):** [../architecture/DATA_MODEL.md](../architecture/DATA_MODEL.md) (aligned with Flyway).
 
 ## Related

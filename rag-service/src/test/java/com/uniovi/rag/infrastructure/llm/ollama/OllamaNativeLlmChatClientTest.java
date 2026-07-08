@@ -2,7 +2,12 @@ package com.uniovi.rag.infrastructure.llm.ollama;
 
 import com.uniovi.rag.application.port.llm.LlmChatRequest;
 import com.uniovi.rag.application.port.llm.LlmChatResponse;
+import com.uniovi.rag.application.service.llm.LlmProviderParameterFilter;
+import com.uniovi.rag.application.service.llm.catalog.LlmModelCatalogService;
 import com.uniovi.rag.domain.llm.LlmProvider;
+import com.uniovi.rag.infrastructure.llm.LlmOllamaDefaults;
+import com.uniovi.rag.infrastructure.llm.LlmProperties;
+import java.util.List;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -33,7 +38,8 @@ class OllamaNativeLlmChatClientTest {
         when(chatModel.call(any(Prompt.class)))
                 .thenReturn(new ChatResponse(List.of(new Generation(new AssistantMessage("hola")))));
 
-        OllamaNativeLlmChatClient client = new OllamaNativeLlmChatClient(chatModel);
+        OllamaNativeLlmChatClient client =
+                new OllamaNativeLlmChatClient(chatModel, parameterFilterFor("gemma3:4b"));
         LlmChatResponse response = client.chat(LlmChatRequest.of("gemma3:4b", "sys", "user", 0.1, null, Map.of()));
 
         assertEquals("hola", response.content());
@@ -46,5 +52,13 @@ class OllamaNativeLlmChatClientTest {
         OllamaOptions options = (OllamaOptions) prompt.getOptions();
         assertEquals("gemma3:4b", options.getModel());
         assertEquals(0.1, options.getTemperature());
+    }
+
+    private static LlmProviderParameterFilter parameterFilterFor(String model) {
+        LlmProperties properties = new LlmProperties();
+        LlmOllamaDefaults ollama = properties.getOllama();
+        ollama.setDefaultChatModel(model);
+        ollama.setAvailableChatModels(List.of(model));
+        return new LlmProviderParameterFilter(new LlmModelCatalogService(properties));
     }
 }

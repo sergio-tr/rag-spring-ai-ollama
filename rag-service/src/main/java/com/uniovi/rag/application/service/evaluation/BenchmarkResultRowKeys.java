@@ -24,5 +24,14 @@ public final class BenchmarkResultRowKeys {
 
     public static final String EMBEDDING_MODEL_ID = "embedding_model_id";
 
+    public static final String JUDGE_STATUS = "judge_status";
+    public static final String JUDGE_FAILURE_REASON = "judge_failure_reason";
+
+    public static final String ROLE_EVAL_SUBSET = "role_eval_subset";
+    public static final String ROLE_EVAL_ROLE_FAMILY = "role_eval_role_family";
+    public static final String ROLE_EVAL_ROLE_PROFILE = "role_eval_role_profile";
+    public static final String ROLE_EVAL_SCORING_TYPE = "role_eval_scoring_type";
+    public static final String ROLE_EVAL_PASSED = "role_eval_passed";
+
     private BenchmarkResultRowKeys() {}
 }

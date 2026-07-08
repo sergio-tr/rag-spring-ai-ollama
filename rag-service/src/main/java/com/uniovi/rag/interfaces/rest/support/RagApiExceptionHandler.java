@@ -23,17 +23,19 @@ public class RagApiExceptionHandler implements Loggable {
     public ResponseEntity<ApiErrorResponse> handleLlmProvider(LlmProviderException ex, HttpServletRequest request) {
         log()
                 .warn(
-                        "LLM provider error [{}] kind={} provider={} operation={} model={} baseUrl={}: {}",
+                        "LLM provider error [{}] kind={} provider={} operation={} model={}: {}",
                         ex.errorCode(),
                         ex.failureKind(),
                         ex.provider(),
                         ex.operation(),
                         ex.model(),
-                        ex.baseUrl(),
                         ex.publicMessage());
+        log().debug("LLM provider error baseUrl={}", ex.baseUrl());
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("provider", ex.provider() != null ? ex.provider().name() : null);
         details.put("operation", ex.operation());
+        details.put("modelId", ex.model());
+        details.put("retryable", ex.retryable());
         if (ex.detail() != null && !ex.detail().isBlank()) {
             details.put("detail", ex.detail());
         }

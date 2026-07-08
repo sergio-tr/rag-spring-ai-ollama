@@ -8,7 +8,9 @@ import com.uniovi.rag.security.JwtAuthenticationFilter;
 import com.uniovi.rag.security.JwtService;
 import com.uniovi.rag.application.service.admin.model.AdminModelsService;
 import com.uniovi.rag.domain.AllowedModelType;
+import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.application.service.async.AsyncTaskService;
+import com.uniovi.rag.infrastructure.llm.LlmProperties;
 import com.uniovi.rag.interfaces.rest.admin.dto.AdminModelDeleteResponse;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import java.util.List;
@@ -66,6 +68,9 @@ class AdminV5ModelsSecurityWebMvcTest {
 
     @MockitoBean
     private AsyncTaskService asyncTaskService;
+
+    @MockitoBean
+    private LlmProperties llmProperties;
 
     @Test
     void unprefixedAdminMirror_health_returnsNotFound() throws Exception {
@@ -147,6 +152,7 @@ class AdminV5ModelsSecurityWebMvcTest {
     void pullModel_withAdminToken_returns202() throws Exception {
         UUID userId = UUID.randomUUID();
         UUID jobId = UUID.randomUUID();
+        when(llmProperties.getEffectiveDefaultChatProvider()).thenReturn(LlmProvider.OLLAMA_NATIVE);
         when(asyncTaskService.submitOllamaPull(eq(userId), eq("m2"))).thenReturn(jobId);
         String token = jwtService.createAccessToken(userId, "a@test", "ADMIN");
 
@@ -159,6 +165,19 @@ class AdminV5ModelsSecurityWebMvcTest {
                 .andExpect(jsonPath("$.pollPath").value("/api/v5/lab/jobs/" + jobId));
 
         verify(asyncTaskService).submitOllamaPull(userId, "m2");
+    }
+
+    @Test
+    void pullModel_withOpenAiCompatibleProvider_returns400() throws Exception {
+        when(llmProperties.getEffectiveDefaultChatProvider()).thenReturn(LlmProvider.OPENAI_COMPATIBLE);
+        String token = jwtService.createAccessToken(UUID.randomUUID(), "a@test", "ADMIN");
+
+        mockMvc.perform(post("/api/v5/admin/models/pull")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"model\":\"m2\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PULL_ONLY_SUPPORTED_FOR_LOCAL_MODEL_SERVER"));
     }
 
     @Test
