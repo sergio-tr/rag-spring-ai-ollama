@@ -1,6 +1,6 @@
 # Backend package map (`rag-service`)
 
-**Navigation only** - not a substitute for [rag-service/README.md](../../rag-service/README.md) (build, profiles, smoke tests). One-line roles for `com.uniovi.rag.*`. For methods, use **Javadoc**: `cd rag-service && ./mvnw javadoc:javadoc` → `target/site/apidocs`.
+**Navigation only** - not a substitute for [rag-service/README.md](../../rag-service/README.md) (build, profiles, smoke tests). One-line roles for `com.uniovi.rag.*`. For methods, use **Javadoc**: `cd rag-service && ./mvnw javadoc:javadoc` → `target/reports/apidocs`.
 
 **Conventions:** This table avoids internal work-item identifiers; use stable package names and responsibilities here. Deep HTTP and traceability detail: [rag-runtime-architecture.md](rag-runtime-architecture.md) and [rag-service/README.md](../../rag-service/README.md).
 
