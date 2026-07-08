@@ -213,7 +213,7 @@ The system is deployed inside the **University of Oviedo** network. External acc
 | Documentation workflow | [`.github/workflows/docs-pages.yml`](.github/workflows/docs-pages.yml) |
 | Runner check workflow | [`.github/workflows/self-hosted-runner-check.yml`](.github/workflows/self-hosted-runner-check.yml) |
 
-**Repository settings:** Configure GitHub **Variables** `DEPLOY_DIR` and `DEPLOY_HEALTH_URL`. Enable **Pages → Source → GitHub Actions**. Prefer **branch protection** on `main` requiring CI before merge (deploy relies on validated `main`).
+**Repository settings:** Configure GitHub **Variables** `DEPLOY_DIR` and `DEPLOY_HEALTH_URL`. For documentation site: **Settings → Pages → Build and deployment → Source → GitHub Actions** (one-time; required before [`docs-pages.yml`](.github/workflows/docs-pages.yml) can deploy). Prefer **branch protection** on `main` requiring CI before merge (deploy relies on validated `main`).
 
 **Server command (operator):**
 
