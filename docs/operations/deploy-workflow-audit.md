@@ -33,6 +33,8 @@ The workflow runs on a **self-hosted** runner on the application server (`156.35
 | `PRODUCTION_HTTPS_PORT` | Host HTTPS port | Optional; default **`8443`** (set **`443`** in phase 2) |
 | `PRODUCTION_HTTP_PORT` | Host HTTP port | Optional; default **`80`** |
 | `LITELLM_BASE_URL` | LiteLLM on model server | Optional; default **`http://156.35.160.78:4000`** |
+| `LITELLM_CHAT_MODEL` | Default chat model via LiteLLM | Optional; default **`qwen3.5:9b`** (must exist on LiteLLM) |
+| `LITELLM_EMBEDDING_MODEL` | Default embedding model via LiteLLM | Optional; default **`bge-m3`** |
 
 ### Repository secrets (written into server `.env` on deploy)
 

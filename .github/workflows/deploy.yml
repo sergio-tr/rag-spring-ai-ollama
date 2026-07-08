@@ -105,6 +105,8 @@ jobs:
           PRODUCTION_HTTP_PORT: ${{ vars.PRODUCTION_HTTP_PORT }}
           PRODUCTION_ENFORCE_HTTPS: ${{ vars.PRODUCTION_ENFORCE_HTTPS }}
           LITELLM_BASE_URL: ${{ vars.LITELLM_BASE_URL }}
+          LITELLM_CHAT_MODEL: ${{ vars.LITELLM_CHAT_MODEL }}
+          LITELLM_EMBEDDING_MODEL: ${{ vars.LITELLM_EMBEDDING_MODEL }}
         run: |
           set -euo pipefail
           python3 ./docker/scripts/apply_prod_public_config.py

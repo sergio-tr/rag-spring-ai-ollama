@@ -29,6 +29,20 @@ class DeterministicToolNegativeAnswerDetectorTest {
     }
 
     @Test
+    void detectsShortNegativeAnswers() {
+        assertThat(DeterministicToolNegativeAnswerDetector.isNegativeOrNoData("no")).isTrue();
+        assertThat(DeterministicToolNegativeAnswerDetector.isNegativeOrNoData("n/a")).isTrue();
+    }
+
+    @Test
+    void detectsSpanishFutureDateDenial() {
+        assertThat(
+                        DeterministicToolNegativeAnswerDetector.isNegativeOrNoData(
+                                "La fecha indicada es futura y aún no ha ocurrido."))
+                .isTrue();
+    }
+
+    @Test
     void detectsAffirmativeCountWithActa() {
         assertThat(DeterministicToolNegativeAnswerDetector.isAffirmativeCountOrList("Hay 3 actas del comité."))
                 .isTrue();

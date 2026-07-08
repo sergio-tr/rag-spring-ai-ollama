@@ -15,11 +15,16 @@ import java.util.regex.Pattern;
 /** Resolves Spanish acta document number anchors (with or without {@code .pdf}) for retrieval targeting. */
 public final class ActaDocumentAnchorSupport {
 
+    private static final int UNICODE_CANON = Pattern.UNICODE_CASE | Pattern.CANON_EQ;
+
     private static final Pattern ACTA_NUMBER_WITH_PDF =
-            Pattern.compile("(?i)\\bacta\\s*(\\d+)\\.pdf\\b");
+            Pattern.compile("(?i)\\bacta\\s*(\\d+)\\.pdf\\b", UNICODE_CANON);
     private static final Pattern ACTA_NUMBER_GENERIC =
             Pattern.compile(
-                    "(?i)\\b(?:el\\s+|la\\s+)?acta\\s+(?:n[uú]m(?:ero)?\\.?|n[°ºo]\\.?|#)?\\s*(\\d+)\\b");
+                    "(?i)\\b(?:el\\s+|la\\s+)?acta\\s+(?:n[uú]m(?:ero)?\\.?|n[°ºo]\\.?|#)?\\s*(\\d+)\\b",
+                    UNICODE_CANON);
+    private static final Pattern NORMALIZE_FILENAME =
+            Pattern.compile("(?i)ACTA\\s*(\\d+)(?:\\.pdf)?", UNICODE_CANON);
 
     private ActaDocumentAnchorSupport() {}
 
@@ -112,7 +117,7 @@ public final class ActaDocumentAnchorSupport {
         if (raw == null || raw.isBlank()) {
             return "";
         }
-        Matcher matcher = Pattern.compile("(?i)ACTA\\s*(\\d+)(?:\\.pdf)?").matcher(raw.trim());
+        Matcher matcher = NORMALIZE_FILENAME.matcher(raw.trim());
         if (matcher.find()) {
             return canonicalFilename(Integer.parseInt(matcher.group(1)));
         }

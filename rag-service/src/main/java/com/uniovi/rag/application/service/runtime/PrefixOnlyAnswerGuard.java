@@ -30,7 +30,13 @@ public final class PrefixOnlyAnswerGuard {
     private static final Pattern SUBSTANTIVE_TOKEN =
             Pattern.compile(
                     "(?i)\\b(?:acta|reuni[oó]n|c[aá]mara|videovigil|asistent|particip|president|secretari|"
-                            + "calefac|decisi[oó]n|\\.pdf|20\\d{2}|no\\s+(?:consta|hay|se\\s+encontr))\\b");
+                            + "calefac|decisi[oó]n|\\.pdf|20\\d{2}|no\\s+(?:consta|hay|se\\s+encontr))\\b",
+                    Pattern.UNICODE_CASE | Pattern.CANON_EQ);
+
+    private static final Pattern SHORT_PREFIX_FRAGMENT =
+            Pattern.compile(
+                    "^(?i)(?:Based|Según|According|Basado|En\\s+base).+",
+                    Pattern.UNICODE_CASE | Pattern.CANON_EQ);
 
     private PrefixOnlyAnswerGuard() {}
 
@@ -46,7 +52,7 @@ public final class PrefixOnlyAnswerGuard {
             return true;
         }
         if (core.length() <= 48
-                && core.matches("(?i)(?:Based|Según|According|Basado|En\\s+base).*")
+                && SHORT_PREFIX_FRAGMENT.matcher(core).matches()
                 && !SUBSTANTIVE_TOKEN.matcher(core).find()) {
             return true;
         }

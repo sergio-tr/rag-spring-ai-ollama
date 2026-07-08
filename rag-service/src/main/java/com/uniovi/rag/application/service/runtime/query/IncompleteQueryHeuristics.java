@@ -19,22 +19,23 @@ public final class IncompleteQueryHeuristics {
 
     public record Signal(Reason reason, List<String> missingFields, String traceNote) {}
 
+    private static final int UNICODE_CANON = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.CANON_EQ;
+
     private static final Pattern TRAILING_DANGLING_PREPOSITION =
             Pattern.compile(
-                    ".*\\b(en|sobre|de|del|al|para|con|sin|cuando|donde|que)\\s*\\??\\s*$",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+                    "\\b(en|sobre|de|del|al|para|con|sin|cuando|donde|que)\\s*\\??\\s*$", UNICODE_CANON);
 
     private static final Pattern TRAILING_RELATIVE_CLAUSE =
             Pattern.compile(
-                    ".*\\b(en las que|en los que|en la que|en el que|las que|los que)\\s*\\??\\s*$",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+                    "\\b(en las que|en los que|en la que|en el que|las que|los que)\\s*\\??\\s*$",
+                    UNICODE_CANON);
 
     private static final Pattern INCOMPLETE_COUNT_OR_FILTER =
             Pattern.compile(
-                    ".*\\b(?:cuenta|cuentas|cuente|contar|lista|listar|listame|enumera|indica|dime)\\b"
-                            + ".*\\b(?:actas?|reuniones?)\\b"
-                            + ".*\\b(?:en las que|en los que|en la que|en el que|donde|que)\\s*\\??\\s*$",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+                    "\\b(?:cuenta|cuentas|cuente|contar|lista|listar|listame|enumera|indica|dime)\\b"
+                            + "[\\s\\S]*\\b(?:actas?|reuniones?)\\b"
+                            + "[\\s\\S]*\\b(?:en las que|en los que|en la que|en el que|donde|que)\\s*\\??\\s*$",
+                    UNICODE_CANON);
 
     private IncompleteQueryHeuristics() {}
 
@@ -47,21 +48,21 @@ public final class IncompleteQueryHeuristics {
                             "incomplete_query_empty"));
         }
         String trimmed = rawText.trim();
-        if (INCOMPLETE_COUNT_OR_FILTER.matcher(trimmed).matches()) {
+        if (INCOMPLETE_COUNT_OR_FILTER.matcher(trimmed).find()) {
             return Optional.of(
                     new Signal(
                             Reason.INCOMPLETE_COUNT_FILTER,
                             List.of("filter_condition"),
                             "incomplete_query_count_filter"));
         }
-        if (TRAILING_RELATIVE_CLAUSE.matcher(trimmed).matches()) {
+        if (TRAILING_RELATIVE_CLAUSE.matcher(trimmed).find()) {
             return Optional.of(
                     new Signal(
                             Reason.TRAILING_RELATIVE_CLAUSE,
                             List.of("filter_condition"),
                             "incomplete_query_trailing_relative_clause"));
         }
-        if (TRAILING_DANGLING_PREPOSITION.matcher(trimmed).matches()) {
+        if (TRAILING_DANGLING_PREPOSITION.matcher(trimmed).find()) {
             return Optional.of(
                     new Signal(
                             Reason.TRAILING_PREPOSITION,

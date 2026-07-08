@@ -23,7 +23,6 @@ export function RagIndexReadinessMessage({ display }: RagIndexReadinessMessagePr
 
   return (
     <output
-      role="status"
       data-testid={display.testId}
       data-readiness-kind={display.kind}
       className={`block rounded-md border p-3 text-xs ${KIND_CLASS[display.kind]}`}
