@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.uniovi.rag.util.QueryDateSupport;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
@@ -11,12 +12,7 @@ import java.util.regex.Pattern;
  */
 final class DocumentBoundQuestionPolicy {
 
-    private static final Pattern DATE_LIKE =
-            Pattern.compile(
-                    // yyyy-mm-dd, dd/mm/yyyy, "24 de febrero de 2025"
-                    "(\\b\\d{4}-\\d{1,2}-\\d{1,2}\\b)|(\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}\\b)|" +
-                    "(\\b\\d{1,2}\\s+de\\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\\s+de\\s+\\d{4}\\b)",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern DATE_LIKE = QueryDateSupport.QUERY_DATE_SIGNAL;
 
     private DocumentBoundQuestionPolicy() {}
 

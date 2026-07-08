@@ -55,6 +55,12 @@ class QueryDateExtractorTest {
     }
 
     @Test
+    void extractNormalizedDate_spanishWithDelBeforeYear_returnsIso() {
+        String q = "dime los asistentes del acta del 25 de febrero del 2025";
+        assertEquals("2025-02-25", extractor.extractNormalizedDate(q, null));
+    }
+
+    @Test
     void extractNormalizedDate_prefersNerDateArray() {
         JSONObject ner = new JSONObject();
         ner.put("date", new JSONArray().put("2027-01-10"));

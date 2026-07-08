@@ -85,6 +85,7 @@ import {
   writeLastConversationId,
 } from "@/features/chat/lib/last-conversation-persistence";
 import { resolveInitialConversationId } from "@/features/chat/lib/resolve-initial-conversation";
+import { resolveChatScopedProjectId } from "@/features/chat/lib/resolve-chat-scoped-project";
 import { ChatAssistantMarkdown } from "@/features/messages/components/ChatAssistantMarkdown";
 
 const CHAT_CONV_LIST_COLLAPSED_KEY = "chat-conv-list-collapsed";
@@ -265,9 +266,9 @@ function ChatPageInner() {
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const active = useAppStore((s) => s.activeProject);
-  const projectId = active?.id;
   const urlProjectId = searchParams?.get?.("projectId")?.trim() || null;
   useSyncActiveProjectFromChatUrl(urlProjectId);
+  const { projectId, projectSyncPending } = resolveChatScopedProjectId(urlProjectId, active?.id);
   const urlConversationId = searchParams?.get?.("conversationId") ?? null;
   const [conversationId, setConversationId] = useState<string | null>(() => urlConversationId ?? null);
   const [convListCollapsed, setConvListCollapsed] = useState(() => {
@@ -359,6 +360,11 @@ function ChatPageInner() {
     }
   }, [urlConversationId, conversationId]);
 
+  useEffect(() => {
+    if (!projectId || urlProjectId) return;
+    router.replace(buildProjectScopedChatHref(projectId, urlConversationId));
+  }, [projectId, urlProjectId, urlConversationId, router]);
+
   const selectConversation = useCallback(
     (nextId: string) => {
       setConversationId(nextId);
@@ -379,7 +385,7 @@ function ChatPageInner() {
     }
   }
 
-  const { data: convs } = useConversations(projectId);
+  const { data: convs, isFetching: convsFetching } = useConversations(projectId);
   const createConv = useCreateConversation(projectId);
   const patchConv = usePatchConversation(projectId);
 
@@ -444,7 +450,13 @@ function ChatPageInner() {
     () => (conversationId && convs ? convs.find((c) => c.id === conversationId) : undefined),
     [conversationId, convs],
   );
-  const conversationNotFound = Boolean(conversationId && convs && !activeConv);
+  const conversationNotFound = Boolean(
+    conversationId &&
+      convs &&
+      !activeConv &&
+      !projectSyncPending &&
+      !convsFetching,
+  );
 
   const runtimeStateQuery = useChatRuntimeState(conversationId);
   const runtimeState = runtimeStateQuery.data ?? null;

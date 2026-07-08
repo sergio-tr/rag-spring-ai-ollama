@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.runtime;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
+import com.uniovi.rag.util.QueryDateSupport;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -159,10 +160,7 @@ public final class FinalAnswerSynthesizer {
         return out;
     }
 
-    private static final Pattern DATE_IN_TEXT =
-            Pattern.compile(
-                    "\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{4}\\b|\\b\\d{1,2}\\s+de\\s+[\\p{L}]+\\s+de\\s+\\d{4}\\b",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern DATE_IN_TEXT = QueryDateSupport.NUMERIC_OR_LONG_SPANISH_DATE;
 
     private static String enforceMultiMatchEnumeration(
             QueryPlan plan, String text, List<Map<String, Object>> responseSources, boolean spanish) {

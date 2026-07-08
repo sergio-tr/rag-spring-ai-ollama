@@ -11,8 +11,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import com.uniovi.rag.util.QueryDateSupport;
 
 @Service
 public class DefaultNamedEntityExtractionAdapter implements NamedEntityExtractionAdapter {
@@ -105,24 +104,12 @@ public class DefaultNamedEntityExtractionAdapter implements NamedEntityExtractio
         };
     }
 
-    private static final Pattern DATE_DMY_SLASH = Pattern.compile("\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{4}\\b");
-    private static final Pattern DATE_D_DE_M_DE_Y = Pattern.compile(
-            "\\b\\d{1,2}\\s+de\\s+[a-záéíóúñ]+\\s+de\\s+\\d{4}\\b",
-            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-
     private static List<String> extractExplicitDatesFromText(String text) {
         if (text == null || text.isBlank()) {
             return List.of();
         }
         List<String> out = new ArrayList<>();
-        Matcher m1 = DATE_DMY_SLASH.matcher(text);
-        while (m1.find()) {
-            out.add(m1.group());
-        }
-        Matcher m2 = DATE_D_DE_M_DE_Y.matcher(text);
-        while (m2.find()) {
-            out.add(m2.group());
-        }
+        out.addAll(QueryDateSupport.extractDateCandidatesFromText(text));
         return out.stream().distinct().toList();
     }
 

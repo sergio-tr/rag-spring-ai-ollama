@@ -14,6 +14,7 @@ import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.application.service.runtime.advisor.MetadataToolContextAssembler;
 import com.uniovi.rag.application.service.runtime.observability.RagToolTimingTelemetry;
 import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
+import com.uniovi.rag.util.QueryDateSupport;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolEvidenceHolder;
 import com.uniovi.rag.tool.AbstractTool;
 import com.uniovi.rag.tool.ToolResult;
@@ -4651,13 +4652,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     protected static boolean hasSpecificCalendarDateInQuery(String query) {
-        if (query == null || query.isBlank()) {
-            return false;
-        }
-        String q = query.toLowerCase(Locale.ROOT);
-        return q.matches(".*\\b\\d{4}-\\d{2}-\\d{2}\\b.*")
-                || q.matches(".*\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{4}\\b.*")
-                || q.matches(".*\\b\\d{1,2}\\s+de\\s+\\p{L}+\\s+de[l]?\\s+\\d{4}\\b.*");
+        return QueryDateSupport.hasParseableDateInText(query);
     }
 
     protected String formatUnavailableSpecificMeetingDateMessage(String query, String isoDate) {
@@ -5110,98 +5105,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * 
      */
     protected LocalDate parseDateFlexible(String dateStr) {
-        if (dateStr == null || dateStr.trim().isEmpty()) {
-            return null;
-        }
-        // Normalize to lowercase to handle case variations (e.g., "Agosto" vs "agosto")
-        String v = dateStr.trim().toLowerCase();
-
-        // Try ISO first (most common after LLM normalization)
-        try {
-            return LocalDate.parse(v, DateTimeFormatter.ISO_LOCAL_DATE);
-        } catch (DateTimeParseException ignored) {
-            // Not ISO-8601; continue with flexible parsers below.
-        }
-
-        // Try existing parseDateToLocalDate formatters
-        LocalDate result = parseDateToLocalDate(v);
-        if (result != null) {
-            return result;
-        }
-
-        // Enhanced Spanish formats with different capitalization and variations
-        List<DateTimeFormatter> spanishFormatters = Arrays.asList(
-            // Full month names
-            DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("d de MMMM de yyyy", Locale.forLanguageTag("es")), // Without quotes
-            DateTimeFormatter.ofPattern("dd de MMMM de yyyy", Locale.forLanguageTag("es")), // Without quotes
-            // Abbreviated month names
-            DateTimeFormatter.ofPattern("d 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("dd 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("d de MMM de yyyy", Locale.forLanguageTag("es")), // Without quotes
-            DateTimeFormatter.ofPattern("dd de MMM de yyyy", Locale.forLanguageTag("es")), // Without quotes
-            // Without "de" between day and month
-            DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.forLanguageTag("es")),
-            // With comma (e.g., "Lunes, 25 de agosto de 2025")
-            DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("EEEE, dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es"))
-        );
-
-        for (DateTimeFormatter formatter : spanishFormatters) {
-            try {
-                return LocalDate.parse(v, formatter);
-            } catch (DateTimeParseException ignored) {
-                // Try next formatter in list
-            }
-        }
-
-        // Additional formats: dd-MM-yyyy, dd.MM.yyyy, dd/MM/yyyy (already in parseDateToLocalDate but try again with different separators)
-        List<DateTimeFormatter> additionalFormatters = Arrays.asList(
-            DateTimeFormatter.ofPattern("d-M-yyyy", Locale.ENGLISH),
-            DateTimeFormatter.ofPattern("dd-MM-yyyy", Locale.ENGLISH),
-            DateTimeFormatter.ofPattern("d.M.yyyy", Locale.ENGLISH),
-            DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.ENGLISH),
-            DateTimeFormatter.ofPattern("d/M/yyyy", Locale.ENGLISH),
-            DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ENGLISH),
-            // Year-month-day variations
-            DateTimeFormatter.ofPattern("yyyy/MM/dd", Locale.ENGLISH),
-            DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ENGLISH),
-            DateTimeFormatter.ofPattern("yyyy.MM.dd", Locale.ENGLISH)
-        );
-
-        for (DateTimeFormatter formatter : additionalFormatters) {
-            try {
-                return LocalDate.parse(v, formatter);
-            } catch (DateTimeParseException ignored) {
-                // Try next formatter in list
-            }
-        }
-
-        // Regex fallback: "d de mes de yyyy" or "dd de mes de yyyy" (Spanish month name, any case)
-        Pattern spanishPattern = Pattern.compile(
-            "(\\d{1,2})\\s+de\\s+(\\p{L}+)\\s+de\\s+(\\d{4})",
-            Pattern.CASE_INSENSITIVE
-        );
-        Matcher matcher = spanishPattern.matcher(v);
-        if (matcher.matches()) {
-            int day = Integer.parseInt(matcher.group(1));
-            String monthStr = matcher.group(2).toLowerCase();
-            int year = Integer.parseInt(matcher.group(3));
-            int month = spanishMonthToNumber(monthStr);
-            if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-                try {
-                    return LocalDate.of(year, month, Math.min(day, LocalDate.of(year, month, 1).lengthOfMonth()));
-                } catch (Exception ignored) {
-                    // Invalid day/month combination for parsed components.
-                }
-            }
-        }
-
-        // If all parsing fails, log for debugging
-        log().debug("Could not parse date: {}", dateStr);
-        return null;
+        return QueryDateSupport.parseFlexibleOrNull(dateStr);
     }
 
     private static final Map<String, Integer> SPANISH_MONTHS = new HashMap<>(Map.ofEntries(
@@ -5222,21 +5126,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     private LocalDate parseDateByRegexFallback(String dateStr) {
         if (dateStr == null || dateStr.trim().isEmpty()) return null;
         String v = dateStr.trim();
-        Pattern spanishPattern = Pattern.compile(
-            "(\\d{1,2})\\s+de\\s+(\\p{L}+)\\s+de\\s+(\\d{4})",
-            Pattern.CASE_INSENSITIVE
-        );
-        Matcher m = spanishPattern.matcher(v);
-        if (m.find()) {
-            int day = Integer.parseInt(m.group(1));
-            int month = spanishMonthToNumber(m.group(2));
-            int year = Integer.parseInt(m.group(3));
-            if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-                try {
-                    return LocalDate.of(year, month, Math.min(day, LocalDate.of(year, month, 1).lengthOfMonth()));
-                } catch (Exception ignored) {
-                }
-            }
+        Optional<LocalDate> spanishDate = QueryDateSupport.parseLongDatePhrase(v);
+        if (spanishDate.isPresent()) {
+            return spanishDate.get();
         }
         Matcher yearOnly = Pattern.compile("(\\d{4})").matcher(v);
         if (yearOnly.find()) {
@@ -5272,58 +5164,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
         // From query (regex patterns) - enhanced with more patterns
         if (query != null) {
-            // ISO format: yyyy-MM-dd
-            Matcher m1 = Pattern.compile("(\\d{4}-\\d{2}-\\d{2})").matcher(query);
-            while (m1.find()) {
-                String iso = m1.group(1);
-                out.add(iso);
-                log().debug("Extracted ISO date from query: {}", iso);
-            }
-
-            // Slash format: dd/MM/yyyy or d/M/yyyy
-            Matcher m2 = Pattern.compile("(\\d{1,2}/\\d{1,2}/\\d{4})").matcher(query);
-            while (m2.find()) {
-                String slash = m2.group(1);
-                out.add(slash);
-                log().debug("Extracted slash date from query: {}", slash);
-            }
-
-            // Dash format: dd-MM-yyyy or d-M-yyyy
-            Matcher m3 = Pattern.compile("(\\d{1,2}-\\d{1,2}-\\d{4})").matcher(query);
-            while (m3.find()) {
-                String dash = m3.group(1);
-                out.add(dash);
-                log().debug("Extracted dash date from query: {}", dash);
-            }
-
-            // Dot format: dd.MM.yyyy or d.M.yyyy
-            Matcher m4 = Pattern.compile("(\\d{1,2}\\.\\d{1,2}\\.\\d{4})").matcher(query);
-            while (m4.find()) {
-                String dot = m4.group(1);
-                out.add(dot);
-                log().debug("Extracted dot date from query: {}", dot);
-            }
-
-            // Spanish format: "d de mes de yyyy" or "dd de mes de yyyy" (case insensitive)
-            Matcher m5 = Pattern.compile(
-                "(\\d{1,2}\\s+de\\s+\\p{L}+\\s+de\\s+\\d{4})", 
-                Pattern.CASE_INSENSITIVE
-            ).matcher(query);
-            while (m5.find()) {
-                String es = m5.group(1);
-                out.add(es);
-                log().debug("Extracted Spanish date from query: {}", es);
-            }
-
-            // Spanish format without "de" between day and month: "d mes yyyy"
-            Matcher m6 = Pattern.compile(
-                "(\\d{1,2}\\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\\s+\\d{4})",
-                Pattern.CASE_INSENSITIVE
-            ).matcher(query);
-            while (m6.find()) {
-                String esNoDe = m6.group(1);
-                out.add(esNoDe);
-                log().debug("Extracted Spanish date (no 'de') from query: {}", esNoDe);
+            for (String candidate : QueryDateSupport.extractDateCandidatesFromText(query)) {
+                out.add(candidate);
+                log().debug("Extracted date from query: {}", candidate);
             }
         }
 
@@ -5346,13 +5189,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Quick heuristic: only call LLM if the query plausibly contains a date.
      */
     private boolean looksLikeContainsDate(String query) {
-        if (query == null) return false;
-        String q = query.toLowerCase();
-        // digits like 2025 or separators
-        if (q.matches(".*\\d{4}.*")) return true;
-        if (q.contains("/") || q.contains("-")) return true;
-        // Spanish month clue
-        return q.matches(".*\\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\\b.*");
+        return QueryDateSupport.hasExplicitDateSignalInText(query);
     }
 
     /**

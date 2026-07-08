@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.clarification;
 
+import com.uniovi.rag.util.QueryDateSupport;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -60,9 +61,7 @@ public final class ClarifiedPlanningInputResolver {
             return false;
         }
         String q = answer.toLowerCase(Locale.ROOT);
-        return q.matches(".*\\b\\d{4}-\\d{2}-\\d{2}\\b.*")
-                || q.matches(".*\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{4}\\b.*")
-                || q.matches(".*\\b\\d{1,2}\\s+de\\s+\\p{L}+\\s+de\\s+\\d{4}\\b.*")
+        return QueryDateSupport.hasParseableDateInText(answer)
                 || q.contains("acta")
                 || q.contains("reunión")
                 || q.contains("reunion");

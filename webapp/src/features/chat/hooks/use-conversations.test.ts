@@ -145,17 +145,16 @@ describe("use-conversations hooks", () => {
     expect(apiFetch).toHaveBeenCalledWith(expect.stringMatching(/\/projects\/p1\/conversations$/));
   });
 
-  it("useCreateConversation posts and invalidates conversations", async () => {
+  it("useCreateConversation posts and updates conversation cache", async () => {
     apiFetch.mockResolvedValueOnce(conv);
     const { wrapper, qc } = createWrapper();
-    const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
     const { result } = renderHook(() => useCreateConversation("p1"), { wrapper });
     await result.current.mutateAsync(undefined);
     expect(apiFetch).toHaveBeenCalledWith(
       expect.stringMatching(/\/projects\/p1\/conversations$/),
       expect.objectContaining({ method: "POST" }),
     );
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["conversations", "p1"] });
+    expect(qc.getQueryData<typeof conv[]>(["conversations", "p1"])).toEqual([conv]);
   });
 
   it("useConversationMessages does not fetch without conversationId", () => {

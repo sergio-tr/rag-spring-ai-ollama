@@ -1,6 +1,8 @@
 package com.uniovi.rag.application.service.runtime;
 
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
+import com.uniovi.rag.application.service.runtime.query.ActaSlashDateSupport;
+import com.uniovi.rag.util.QueryDateSupport;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
@@ -24,8 +26,7 @@ public final class DateGroundingSupport {
 
     private static final Pattern ISO_DATE = Pattern.compile("\\b(\\d{4}-\\d{2}-\\d{2})\\b", Pattern.CANON_EQ);
     private static final Pattern DMY_NUMERIC = Pattern.compile("\\b(\\d{1,2})[/-](\\d{1,2})[/-](\\d{4})\\b", Pattern.CANON_EQ);
-    private static final Pattern D_DE_M_DE_Y =
-            Pattern.compile("\\b(\\d{1,2})\\s+de\\s+([a-záéíóúñ]+)\\s+de[l]?\\s+(\\d{4})\\b", UNICODE_CANON);
+    private static final Pattern D_DE_M_DE_Y = QueryDateSupport.LONG_DATE_PARSE;
     private static final Pattern MONTH_YEAR = Pattern.compile("\\b([a-záéíóúñ]+)\\s+(\\d{4})\\b", UNICODE_CANON);
     private static final Pattern YEAR = Pattern.compile("\\b(20\\d{2}|19\\d{2})\\b", Pattern.CANON_EQ);
 
@@ -41,7 +42,7 @@ public final class DateGroundingSupport {
         }
         Matcher monthYear = MONTH_YEAR.matcher(rawQuestion);
         while (monthYear.find()) {
-            int month = spanishMonthToInt(monthYear.group(1));
+            int month = QueryDateSupport.spanishMonthToNumber(monthYear.group(1));
             int year = safeInt(monthYear.group(2));
             if (month >= 1 && year > 0) {
                 return Optional.of(new RequestedDate(YearMonth.of(year, month).toString(), DatePrecision.MONTH));
@@ -312,17 +313,21 @@ public final class DateGroundingSupport {
         if (text == null || text.isBlank()) {
             return Optional.empty();
         }
+        Optional<LocalDate> canonical = QueryDateSupport.firstParseableDateInText(text);
+        if (canonical.isPresent()) {
+            return canonical;
+        }
         Matcher iso = ISO_DATE.matcher(text);
         if (iso.find()) {
             return parseDate(iso.group(1));
         }
         Matcher dmy = DMY_NUMERIC.matcher(text);
         if (dmy.find()) {
-            return localDate(safeInt(dmy.group(3)), safeInt(dmy.group(2)), safeInt(dmy.group(1)));
+            return ActaSlashDateSupport.parseToIso(dmy.group()).flatMap(DateGroundingSupport::parseDate);
         }
         Matcher spanish = D_DE_M_DE_Y.matcher(text);
         if (spanish.find()) {
-            return localDate(safeInt(spanish.group(3)), spanishMonthToInt(spanish.group(2)), safeInt(spanish.group(1)));
+            return QueryDateSupport.parseLongDatePhrase(spanish.group());
         }
         return Optional.empty();
     }
@@ -356,30 +361,7 @@ public final class DateGroundingSupport {
     }
 
     private static int spanishMonthToInt(String raw) {
-        if (raw == null) {
-            return -1;
-        }
-        String m = raw.trim().toLowerCase(Locale.ROOT)
-                .replace('á', 'a')
-                .replace('é', 'e')
-                .replace('í', 'i')
-                .replace('ó', 'o')
-                .replace('ú', 'u');
-        return switch (m) {
-            case "enero" -> 1;
-            case "febrero" -> 2;
-            case "marzo" -> 3;
-            case "abril" -> 4;
-            case "mayo" -> 5;
-            case "junio" -> 6;
-            case "julio" -> 7;
-            case "agosto" -> 8;
-            case "septiembre", "setiembre" -> 9;
-            case "octubre" -> 10;
-            case "noviembre" -> 11;
-            case "diciembre" -> 12;
-            default -> -1;
-        };
+        return QueryDateSupport.spanishMonthToNumber(raw);
     }
 
     private static String filename(RetrievalCandidate c) {

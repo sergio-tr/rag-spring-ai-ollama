@@ -3,6 +3,7 @@ package com.uniovi.rag.tool.metadata;
 import com.uniovi.rag.application.service.runtime.language.QueryLanguagePolicy;
 import com.uniovi.rag.domain.model.Minute;
 import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
+import com.uniovi.rag.util.QueryDateSupport;
 import java.text.Normalizer;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -1295,11 +1296,9 @@ public final class StructuredMinuteMetadataSupport {
                         || (q.contains("resumen") && q.contains("acta"))
                         || (q.contains("resume") && q.contains("acta"));
         boolean dated =
-                q.matches(".*\\b\\d{1,2}/\\d{1,2}/\\d{4}\\b.*")
+                QueryDateSupport.hasParseableDateInText(q)
                         || q.contains("25/02/2026")
-                        || q.contains("24/02/2025")
-                        || q.matches(
-                                ".*\\b\\d{1,2}\\s+de\\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\\s+de\\s+\\d{4}.*");
+                        || q.contains("24/02/2025");
         return brief && dated;
     }
 

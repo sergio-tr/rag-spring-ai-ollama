@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.runtime.memory;
 import com.uniovi.rag.domain.MessageRole;
 import com.uniovi.rag.application.service.runtime.query.ActaFieldAnchorHeuristics;
 import com.uniovi.rag.application.service.runtime.query.ActaSlashDateSupport;
+import com.uniovi.rag.util.QueryDateSupport;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryTurn;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -19,11 +20,8 @@ import java.util.regex.Pattern;
 public final class ConversationFollowUpResolver {
 
     private static final Pattern DATE_SLASH = Pattern.compile("\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}\\b");
-    private static final Pattern DATE_ISO = Pattern.compile("\\b\\d{4}-\\d{2}-\\d{2}\\b");
-    private static final Pattern DATE_SPANISH =
-            Pattern.compile(
-                    "\\b\\d{1,2}\\s+de\\s+[\\p{L}]+\\s+de[l]?\\s+\\d{4}\\b",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern DATE_ISO = QueryDateSupport.ISO_DATE;
+    private static final Pattern DATE_SPANISH = QueryDateSupport.LONG_DATE_PHRASE;
 
     private ConversationFollowUpResolver() {}
 

@@ -7,6 +7,7 @@ import com.uniovi.rag.application.service.runtime.document.extraction.DocumentCo
 import com.uniovi.rag.application.service.runtime.retrieval.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
+import com.uniovi.rag.util.QueryDateSupport;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.*;
@@ -377,12 +378,9 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         }
         
         // Extract dates (common Spanish date patterns)
-        addRegexMatchesToList(
-                entities,
-                Pattern.compile("\\d{1,2}\\s+de\\s+[a-z]+\\s+de\\s+\\d{4}"),
-                bounded);
-        addRegexMatchesToList(entities, Pattern.compile("\\d{1,2}/\\d{1,2}/\\d{4}"), bounded);
-        addRegexMatchesToList(entities, Pattern.compile("\\d{4}-\\d{2}-\\d{2}"), bounded);
+        addRegexMatchesToList(entities, QueryDateSupport.LONG_DATE_PARSE, bounded);
+        addRegexMatchesToList(entities, QueryDateSupport.DMY_SLASH_CAPTURE, bounded);
+        addRegexMatchesToList(entities, QueryDateSupport.ISO_DATE, bounded);
         
         // Extract capitalized words/phrases (likely names or organizations)
         Pattern namePattern = Pattern.compile(

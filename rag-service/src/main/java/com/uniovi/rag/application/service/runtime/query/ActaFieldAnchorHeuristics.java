@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.runtime.query;
 
 import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
+import com.uniovi.rag.util.QueryDateSupport;
 import java.util.Locale;
 
 /** Shared heuristics for acta-scoped field queries that require a meeting/date anchor (FD-CL-01). */
@@ -216,12 +217,10 @@ public final class ActaFieldAnchorHeuristics {
     }
 
     public static boolean hasExplicitDateInText(String q) {
-        return q.matches(".*\\b\\d{4}-\\d{2}-\\d{2}\\b.*")
-                || ActaSlashDateSupport.hasSlashOrDashDateInText(q)
-                || q.matches(".*\\b\\d{1,2}\\s+de\\s+\\p{L}+\\s+de[l]?\\s+\\d{4}\\b.*")
-                || q.matches(".*\\baño\\s+(del\\s+)?\\d{4}\\b.*")
-                || q.matches(".*\\bdel\\s+año\\s+\\d{4}\\b.*")
-                || q.matches(".*\\ben\\s+20\\d{2}\\b.*")
+        if (q == null || q.isBlank()) {
+            return false;
+        }
+        return QueryDateSupport.hasExplicitDateSignalInText(q)
                 || hasMonthNameInText(q);
     }
 

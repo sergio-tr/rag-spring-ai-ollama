@@ -87,7 +87,6 @@ export function useCreateConversation(projectId: string | undefined) {
           }
           return [data, ...old];
         });
-        void qc.invalidateQueries({ queryKey: convKey(projectId) });
         void qc.invalidateQueries({ queryKey: ["projects"] });
       }
     },
