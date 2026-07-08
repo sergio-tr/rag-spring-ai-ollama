@@ -472,6 +472,27 @@ export async function openChatConfigurationPanel(page: Page): Promise<Locator> {
 }
 
 /** Scrolls the retrieval/runtime overrides block into view inside an open configuration panel. */
+export async function selectRetrievalCapablePreset(panel: Locator): Promise<void> {
+  const presetSelect = panel.getByTestId("chat-preset-select");
+  await expect(presetSelect).toBeVisible({ timeout: 15_000 });
+  const retrievalOption = presetSelect
+    .locator("option")
+    .filter({ hasText: /chunk-level (dense )?retrieval|hybrid.*retrieval|dense retrieval/i })
+    .first();
+  if ((await retrievalOption.count()) === 0 || (await retrievalOption.isDisabled())) {
+    throw new Error(
+      "selectRetrievalCapablePreset: no enabled retrieval preset option found in chat-preset-select.",
+    );
+  }
+  const value = await retrievalOption.getAttribute("value");
+  if (!value) {
+    throw new Error("selectRetrievalCapablePreset: retrieval preset option is missing a value attribute.");
+  }
+  await presetSelect.selectOption(value);
+  await expect(presetSelect).toHaveValue(value);
+}
+
+/** Scrolls the retrieval/runtime overrides block into view inside an open configuration panel. */
 export async function expandChatConfigurationRuntimeSection(panel: Locator): Promise<void> {
   const topK = panel.getByTestId("chat-runtime-toggle-topK");
   if (await topK.isVisible().catch(() => false)) {

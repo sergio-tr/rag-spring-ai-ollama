@@ -9,6 +9,7 @@ import {
   loginAsSeedUser,
   openChatConfigurationPanel,
   productApiUrl,
+  selectRetrievalCapablePreset,
   sendChatMessage,
   waitForDocumentReadyByName,
 } from "../support/helpers";
@@ -50,6 +51,7 @@ test.describe("Chat RAG", () => {
     const presetSelect = panel.getByTestId("chat-preset-select");
     await expect(presetSelect).toBeVisible({ timeout: 15_000 });
     expect(await presetSelect.locator("option:not([disabled])").count()).toBeGreaterThan(0);
+    await selectRetrievalCapablePreset(panel);
     await expandChatConfigurationRuntimeSection(panel);
     await expect(panel.getByTestId("chat-runtime-toggle-similarityThreshold")).toBeVisible({
       timeout: 15_000,
@@ -67,10 +69,18 @@ test.describe("Chat RAG", () => {
         }))
         .filter((o) => o.value && !o.disabled),
     );
-    const advanced = optionValues.find((o) => /P9|P10|P11|P12|P13|P14|advanced|avanzad/i.test(o.text));
+    const advanced = optionValues.find(
+      (o) =>
+        /P9|P10|P11|P12|P13|P14|advanced|avanzad/i.test(o.text) &&
+        !/direct llm|basic baseline|full corpus|massive prompt/i.test(o.text),
+    );
     if (advanced) {
       await presetSelect.selectOption(advanced.value);
       await expect(presetSelect).toHaveValue(advanced.value);
+      const notApplicable = panel.getByTestId("chat-retrieval-settings-not-applicable");
+      if (await notApplicable.isVisible().catch(() => false)) {
+        await selectRetrievalCapablePreset(panel);
+      }
     }
     await page.keyboard.press("Escape").catch(() => undefined);
 
