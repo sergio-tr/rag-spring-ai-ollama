@@ -32,17 +32,18 @@ jobs:
         working-directory: rag-service
         run: ./mvnw -q javadoc:javadoc -DskipTests
 
+      - uses: ./.github/actions/cache-npm-webapp
+
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: webapp/package-lock.json
+          node-version-file: webapp/package.json
+          package-manager-cache: false
 
       - name: Build frontend TypeDoc
         working-directory: webapp
         run: |
-          npm ci
+          npm install --no-audit --no-fund
           npm run doc
 
       - name: Assemble public documentation site
