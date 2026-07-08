@@ -33,15 +33,16 @@ class IndexAwareChatPresetDefaultServiceTest {
     @InjectMocks private IndexAwareChatPresetDefaultService service;
 
     @Test
-    void resolveDefaultPresetId_prefersDemoBestWhenCompatible() {
+    void resolveDefaultPresetId_prefersP3WhenCompatible() {
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
-        UUID demoBest = ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID;
+        UUID p3 = UUID.fromString("cafe0001-0001-4001-8001-000000000013");
+        UUID demoBest = UUID.fromString("cafe0001-0001-4001-8001-000000000003");
 
         when(projectCompatiblePresetsService.list(eq(userId), eq(projectId), eq(null)))
-                .thenReturn(catalog(List.of(compatibleProduct(demoBest, "Demo_Best", true))));
+                .thenReturn(catalog(List.of(compatibleProduct(p3, "P3", true), compatibleProduct(demoBest, "Demo_Best", true))));
 
-        assertThat(service.resolveDefaultPresetId(userId, projectId)).contains(demoBest);
+        assertThat(service.resolveDefaultPresetId(userId, projectId)).contains(p3);
     }
 
     @Test
@@ -50,13 +51,12 @@ class IndexAwareChatPresetDefaultServiceTest {
         UUID projectId = UUID.randomUUID();
         UUID p3 = UUID.fromString("cafe0001-0001-4001-8001-000000000013");
 
+        UUID demoBest = UUID.fromString("cafe0001-0001-4001-8001-000000000003");
+
         when(projectCompatiblePresetsService.list(eq(userId), eq(projectId), eq(null)))
                 .thenReturn(
                         catalog(
-                                List.of(
-                                        incompatibleProduct(
-                                                ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID,
-                                                "Demo_Best")),
+                                List.of(incompatibleProduct(demoBest, "Demo_Best")),
                                 List.of(compatibleExperimental(p3))));
 
         assertThat(service.resolveDefaultPresetId(userId, projectId)).contains(p3);
@@ -64,11 +64,11 @@ class IndexAwareChatPresetDefaultServiceTest {
 
     @Test
     void resolveFromCatalog_returnsEmptyWhenNothingCompatible() {
-        UUID demoBest = ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID;
+        UUID p3 = ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID;
         Optional<UUID> resolved =
                 IndexAwareChatPresetDefaultService.resolveFromCatalog(
                         catalog(
-                                List.of(incompatibleProduct(demoBest, "Demo_Best")),
+                                List.of(incompatibleProduct(p3, "P3")),
                                 List.of()));
         assertThat(resolved).isEmpty();
     }

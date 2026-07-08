@@ -12,7 +12,7 @@ public final class ReasoningBlockSanitizer {
 
     private static final Pattern THINK_TAGS =
             Pattern.compile(
-                    "(?is)<\\s*(?:think|redacted_thinking|redacted_reasoning)\\b[^>]*>.*+?</\\s*(?:think|redacted_thinking|redacted_reasoning)\\s*>");
+                    "(?is)<\\s*(?:think|redacted_thinking|redacted_reasoning)\\b[^>]*>.*?</\\s*(?:think|redacted_thinking|redacted_reasoning)\\s*>");
     private static final Pattern THINK_TAG_TRAILING =
             Pattern.compile("(?is)<\\s*(?:think|redacted_thinking|redacted_reasoning)\\b[^>]*>.*+$");
     private static final Pattern REACT_LABELED_LINE =
