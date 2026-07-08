@@ -18,6 +18,11 @@
 
 ---
 
+## Project links
+
+- **Test reports and documentation:** [GitHub Pages](https://sergio-tr.github.io/rag-spring-ai-ollama/)
+- **Deployed web application:** [Production web app](https://hatchback-obsession-staring.ngrok-free.dev/en/login)
+
 RAG (Retrieval-Augmented Generation) system built with **Spring Boot**, **Spring AI**, **LiteLLM** (configured API catalog), and **PostgreSQL + pgvector**. Includes a trainable query-type classifier exposed as an HTTP microservice (FastAPI; default **scikit-learn** model, optional Keras training path).
 
 **Documentation:** global architecture, domain, and governance live in **[`docs/README.md`](docs/README.md)** (policy layers and non-canonical areas: [`docs/development/documentation-governance-strategy.md`](docs/development/documentation-governance-strategy.md)). Per-module setup and commands live in each folder’s **README** (see table below).
