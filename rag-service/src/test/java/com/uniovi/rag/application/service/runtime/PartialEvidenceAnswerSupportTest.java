@@ -59,6 +59,16 @@ class PartialEvidenceAnswerSupportTest {
     }
 
     @Test
+    void enrichIfPartial_skipsAttendeeGapWhenNamesPresent() {
+        QueryPlan plan = planWithQuery("¿Quiénes asistieron a la reunión?");
+        String answer = "Asistieron Jorge García y 2 participantes más.";
+        String out =
+                PartialEvidenceAnswerSupport.enrichIfPartial(
+                        plan, answer, List.of(Map.of("chunkId", "c1")));
+        assertThat(out).isEqualTo(answer);
+    }
+
+    @Test
     void enrichIfPartial_returnsUnchangedWhenNoPartialSignal() {
         QueryPlan plan = planWithQuery("What is RAG?");
         String answer =

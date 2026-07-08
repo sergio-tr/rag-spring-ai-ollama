@@ -29,6 +29,12 @@ class DeterministicToolNegativeAnswerDetectorTest {
     }
 
     @Test
+    void detectsAffirmativeCountWithActa() {
+        assertThat(DeterministicToolNegativeAnswerDetector.isAffirmativeCountOrList("Hay 3 actas del comité."))
+                .isTrue();
+    }
+
+    @Test
     void doesNotFlagGroundedAffirmativeAnswer() {
         assertThat(
                         DeterministicToolNegativeAnswerDetector.isNegativeOrNoData(

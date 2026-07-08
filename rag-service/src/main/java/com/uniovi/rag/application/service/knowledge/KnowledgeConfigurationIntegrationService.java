@@ -118,18 +118,6 @@ public class KnowledgeConfigurationIntegrationService {
     }
 
     /**
-     * Project index capability ({@code supportsMetadata} on the active snapshot) is authoritative at creation
-     * time. Preset runtime flags must not silently upgrade snapshot metadata capability.
-     */
-    private Optional<KnowledgeReindexDecision> metadataSnapshotUpgradeDecision(
-            KnowledgeBuildProjection projection,
-            CorpusScope corpusScope,
-            UUID conversationId,
-            UUID projectId) {
-        return Optional.empty();
-    }
-
-    /**
      * When the resolved projection targets an index profile (materialization/metadata/chunking) that has no ACTIVE
      * project snapshot yet, force a hard rebuild so alternate materializations can coexist per profile hash.
      */

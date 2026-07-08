@@ -14,6 +14,7 @@ import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagIndexingEmbeddingProperties;
 import com.uniovi.rag.configuration.RagReasoningProperties;
 import com.uniovi.rag.domain.embedding.EmbeddingApplicationDefaults;
+import com.uniovi.rag.domain.embedding.EmbeddingConfigurationKeys;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.llm.LlmProvider;
 import com.uniovi.rag.domain.runtime.RagConfig;
@@ -132,5 +133,21 @@ class EmbeddingApplicationDefaultsTest {
         assertThat(defaults.indexingOptions().batchSize()).isEqualTo(EmbeddingApplicationDefaults.EMBEDDING_BATCH_SIZE);
         assertThat(defaults.embeddingOptions().timeoutSeconds())
                 .isEqualTo(EmbeddingApplicationDefaults.EMBEDDING_TIMEOUT_SECONDS);
+    }
+
+    @Test
+    void systemConfigurationValues_exportsEmb2WinnerKeys() {
+        var values = EmbeddingApplicationDefaults.systemConfigurationValues();
+
+        assertThat(values)
+                .containsEntry("topK", EmbeddingApplicationDefaults.RETRIEVAL_TOP_K)
+                .containsEntry("similarityThreshold", EmbeddingApplicationDefaults.SIMILARITY_THRESHOLD)
+                .containsEntry("materializationStrategy", EmbeddingApplicationDefaults.MATERIALIZATION_STRATEGY)
+                .containsEntry("embeddingModel", EmbeddingApplicationDefaults.EMBEDDING_MODEL)
+                .containsEntry(EmbeddingConfigurationKeys.EMBEDDING_DIMENSIONS, EmbeddingApplicationDefaults.EMBEDDING_DIMENSIONS)
+                .containsEntry(EmbeddingConfigurationKeys.EMBEDDING_NORMALIZE, EmbeddingApplicationDefaults.EMBEDDING_NORMALIZE)
+                .containsEntry(EmbeddingConfigurationKeys.EMBEDDING_BATCH_SIZE, EmbeddingApplicationDefaults.EMBEDDING_BATCH_SIZE)
+                .containsEntry(EmbeddingConfigurationKeys.EMBEDDING_TIMEOUT_SECONDS, EmbeddingApplicationDefaults.EMBEDDING_TIMEOUT_SECONDS);
+        assertThat(values).hasSize(8);
     }
 }
