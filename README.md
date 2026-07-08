@@ -1,29 +1,19 @@
 # RAG Spring AI Ollama
-
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     BADGES - selected GitHub Actions (native badge.svg, default branch)
+     BADGES - selected project status
      ═══════════════════════════════════════════════════════════════════════════ -->
 
-[![CI](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/ci.yml/badge.svg)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/ci.yml)
-[![Stack integration](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/integration.yml/badge.svg)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/integration.yml)
 [![Observability smoke](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/observability-smoke.yml/badge.svg)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/observability-smoke.yml)
-[![E2E fullstack](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/e2e-fullstack.yml/badge.svg)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/e2e-fullstack.yml)
-
-[![Docker Compose CI](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/docker-compose-ci.yml/badge.svg)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/docker-compose-ci.yml)
 [![Build (no tests)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build.yml/badge.svg)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build.yml)
-[![Build & push images (GHCR)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build-images.yml/badge.svg)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build-images.yml)
 
-[![SonarCloud Analysis](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/sonar.yml/badge.svg)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/sonar.yml)
-
-<!-- SonarCloud quality metrics (must match sonar.projectKey in sonar-project.properties) -->
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
+<!-- SonarCloud quality metrics -->
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=coverage)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
 [![Bugs](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=bugs)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
 [![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
 
-<!-- Last release (no release yet → badge may show “no releases or repo not found”) -->
+<!-- Last release -->
 [![GitHub Release](https://img.shields.io/github/v/release/sergio-tr/rag-spring-ai-ollama?label=latest%20release&color=blue)](https://github.com/sergio-tr/rag-spring-ai-ollama/releases/latest)
 
 ---
