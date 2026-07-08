@@ -28,7 +28,7 @@ The workflow runs on a **self-hosted** runner on the university application serv
 | Variable | Use | Notes |
 | -------- | ----- | -------- |
 | `DEPLOY_DIR` | Git checkout path on the runner host | Must be a git repository; `.env` files bootstrapped then secrets applied each deploy |
-| `DEPLOY_HEALTH_URL` | Post-deploy health check | Optional; defaults to `https://127.0.0.1:443/actuator/health/liveness` (uses `curl -k` for self-signed TLS) |
+| `DEPLOY_HEALTH_URL` | Post-deploy health check (localhost only) | Optional; defaults to `https://127.0.0.1:443/actuator/health/liveness` (`curl -k`). **Do not** use the ngrok/public URL here — ngrok may be offline during deploy. |
 | `PRODUCTION_PUBLIC_HOST` | Public hostname for OAuth and browser URLs | Optional; default **`hatchback-obsession-staring.ngrok-free.dev`** |
 | `PRODUCTION_HTTPS_PORT` | Public HTTPS port in URLs | Optional; default **`443`** |
 | `PRODUCTION_HTTP_PORT` | Host HTTP port (ngrok tunnel target) | Optional; default **`80`** |
