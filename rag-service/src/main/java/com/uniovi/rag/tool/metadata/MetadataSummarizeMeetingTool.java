@@ -133,18 +133,9 @@ import java.util.stream.Collectors;
     }
 
     private SummaryResult generateSummary(String query, Minute minute) {
-        boolean asksForTopicsOrPoints = asksForTopicsOrPoints(query);
-        String summary;
-        if (asksForTopicsOrPoints) {
-            summary = buildSummaryFromMetadata(minute);
-            if (summary.isBlank()) {
-                summary = generateSummaryWithLLM(query, minute);
-            }
-        } else {
-            summary = buildSummaryFromMetadata(minute);
-            if (summary.isBlank()) {
-                summary = generateSummaryWithLLM(query, minute);
-            }
+        String summary = buildSummaryFromMetadata(minute);
+        if (summary.isBlank()) {
+            summary = generateSummaryWithLLM(query, minute);
         }
 
         if (summary.isBlank()) {

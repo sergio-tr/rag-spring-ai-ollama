@@ -23,9 +23,10 @@ public final class PrefixOnlyAnswerGuard {
 
     private static final Pattern GROUNDING_PREFIX_ONLY =
             Pattern.compile(
-                    "^(?i)(?:Based(?:\\s+on(?:\\s+the)?)?|According(?:\\s+to(?:\\s+the)?)?|"
+                    "^(?:Based(?:\\s+on(?:\\s+the)?)?|According(?:\\s+to(?:\\s+the)?)?|"
                             + "Según(?:\\s+(?:las?\\s+)?(?:fuentes|evidencia|contexto|documentos|actas|lo)?)?|"
-                            + "Basado\\s+en(?:\\s+lo)?|En\\s+base\\s+a)\\s*\\.?$");
+                            + "Basado\\s+en(?:\\s+lo)?|En\\s+base\\s+a)\\s*\\.?$",
+                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
     private static final Pattern SUBSTANTIVE_TOKEN =
             Pattern.compile(

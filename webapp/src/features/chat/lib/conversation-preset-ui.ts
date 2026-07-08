@@ -3,10 +3,10 @@ import { resolvePresetDisplayName } from "@/features/presets/lib/preset-display"
 import { toProductPresetDisplayName } from "@/lib/product-preset-labels";
 
 /**
- * Matches seeded `Demo_Best` in backend migration `V18__demo_rag_presets.sql`
- * when `effectivePresetId` is absent (older API responses).
+ * Matches seeded P3 (chunk-level dense retrieval) in backend migration V44.
+ * Demo_Best remains selectable manually; P3 is the thesis-recommended default.
  */
-export const CHAT_DETERMINISTIC_DEFAULT_PRESET_ID = "cafe0001-0001-4001-8001-000000000003";
+export const CHAT_DETERMINISTIC_DEFAULT_PRESET_ID = "cafe0001-0001-4001-8001-000000000013";
 
 /** UUID string always suitable for `<select value>` - never empty / "None". */
 export function resolveConversationPresetSelectValue(conversation: ConversationDto | undefined): string {

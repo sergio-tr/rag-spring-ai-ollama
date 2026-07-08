@@ -141,10 +141,13 @@ def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
 
 
 def observability_reachable(http_client: httpx.Client, obs_urls: dict[str, str]) -> bool:
-    """True if the OTEL collector Prometheus self-metrics endpoint responds (compose.obs.yml up)."""
+    """True when the observability stack is up (OTEL metrics + Grafana health)."""
     try:
-        r = http_client.get(obs_urls["otel_metrics"], timeout=5.0)
-        return r.status_code == 200
+        otel = http_client.get(obs_urls["otel_metrics"], timeout=5.0)
+        if otel.status_code != 200:
+            return False
+        grafana = http_client.get(f"{obs_urls['grafana'].rstrip('/')}/api/health", timeout=5.0)
+        return grafana.status_code == 200
     except (httpx.HTTPError, OSError):
         return False
 

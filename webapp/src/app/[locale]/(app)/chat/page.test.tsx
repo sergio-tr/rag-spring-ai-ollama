@@ -76,7 +76,7 @@ vi.mock("@/store/app.store", () => ({
     sel({ activeProject: { id: "p1", name: "P" } }),
 }));
 
-const DEFAULT_EFFECTIVE_PRESET_ID = "cafe0001-0001-4001-8001-000000000003";
+const DEFAULT_EFFECTIVE_PRESET_ID = "cafe0001-0001-4001-8001-000000000013";
 
 const mockConvRows: ConversationDto[] = [
   {

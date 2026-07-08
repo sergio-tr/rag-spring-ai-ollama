@@ -121,15 +121,6 @@ describe("AppSectionActions", () => {
     expect(screen.getByRole("heading", { name: /^New project$/i })).toBeInTheDocument();
   });
 
-  it("projects menu keeps delete-all unavailable as a disabled item with explanation", async () => {
-    const user = userEvent.setup();
-    renderActions();
-    await user.click(screen.getByRole("button", { name: /projects actions/i }));
-    const deleteAll = screen.getByRole("menuitem", { name: /delete all projects/i });
-    expect(deleteAll).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getByText(/Not available - delete projects individually/i)).toBeInTheDocument();
-  });
-
   it("documents menu disables refresh without an active project", async () => {
     mockPathname.mockReturnValue("/documents");
     const user = userEvent.setup();

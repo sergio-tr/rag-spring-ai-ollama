@@ -112,6 +112,14 @@ public class ModelRegistryService {
                 }
                 return new ModelRegistryItemDto(
                         entry.modelName(), modelType, ModelRegistryAvailabilityStatus.AVAILABLE, null, true);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return new ModelRegistryItemDto(
+                        entry.modelName(),
+                        modelType,
+                        ModelRegistryAvailabilityStatus.ERROR,
+                        "Interrupted during embedding probe",
+                        false);
             } catch (Exception e) {
                 return new ModelRegistryItemDto(
                         entry.modelName(),

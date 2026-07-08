@@ -75,11 +75,11 @@ public class QueryDateExtractor implements Loggable {
         findAllMatches(Pattern.compile("(\\d{4}-\\d{2}-\\d{2})"), query, out);
         findAllMatches(Pattern.compile("(\\d{1,2}/\\d{1,2}/\\d{4})"), query, out);
         findAllMatches(Pattern.compile("(\\d{1,2}-\\d{1,2}-\\d{4})"), query, out);
-        findAllMatches(Pattern.compile("(\\d{1,2}\\s+de\\s+\\p{L}+\\s+de\\s+\\d{4})", Pattern.CASE_INSENSITIVE), query, out);
+        findAllMatches(Pattern.compile("(\\d{1,2}\\s+de\\s+\\p{L}+\\s+de\\s+\\d{4})", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE), query, out);
         findAllMatches(Pattern.compile(
                 "(\\d{1,2}\\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\\s+\\d{4})",
-                Pattern.CASE_INSENSITIVE), query, out);
-        Matcher yearOnly = Pattern.compile("(?:del\\s+)?año\\s+(\\d{4})", Pattern.CASE_INSENSITIVE).matcher(query);
+                Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE), query, out);
+        Matcher yearOnly = Pattern.compile("(?:del\\s+)?año\\s+(\\d{4})", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(query);
         if (yearOnly.find()) {
             out.add(yearOnly.group(1) + "-01-01");
         }

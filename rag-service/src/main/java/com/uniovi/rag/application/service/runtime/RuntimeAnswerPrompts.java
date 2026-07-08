@@ -600,7 +600,7 @@ public final class RuntimeAnswerPrompts {
         // e.g. "25 de febrero de 2025"
         private static final Pattern D_DE_M_DE_Y = Pattern.compile(
                 "\\b(\\d{1,2})\\s+de\\s+([a-záéíóúñ]+)\\s+de\\s+(\\d{4})\\b",
-                Pattern.CASE_INSENSITIVE);
+                Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
         static Optional<ExtractedDate> tryExtractFromText(String text) {
             if (text == null || text.isBlank()) {

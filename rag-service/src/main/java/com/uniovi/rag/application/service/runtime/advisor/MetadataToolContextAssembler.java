@@ -21,7 +21,7 @@ public class MetadataToolContextAssembler {
 
     private static final Pattern FOOTER_BOILERPLATE =
             Pattern.compile(
-                    "(?is).*(?:no habiendo más asuntos|se da por finalizada|clausura de la sesión|clausura de la sesion).*");
+                    "(?isu).*(?:no habiendo más asuntos|se da por finalizada|clausura de la sesión|clausura de la sesion).*");
 
     public String assembleFromMinutes(List<Minute> minutes) {
         if (minutes == null || minutes.isEmpty()) {

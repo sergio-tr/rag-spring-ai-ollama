@@ -152,7 +152,7 @@ public final class RagPresetRetrievalQualityMetrics {
             List<String> ranked, Set<String> goldUnion, Set<String> goldDocs, Set<String> goldChunks) {
         for (int i = 0; i < ranked.size(); i++) {
             if (overlapsGold(ranked.get(i), goldUnion, goldDocs, goldChunks)) {
-                return 1.0 / (i + 1);
+                return 1.0 / (i + 1.0);
             }
         }
         return 0.0;
@@ -171,7 +171,7 @@ public final class RagPresetRetrievalQualityMetrics {
         double dcg = 0.0;
         for (int i = 0; i < limit; i++) {
             if (overlapsGold(ranked.get(i), goldUnion, goldDocs, goldChunks)) {
-                dcg += 1.0 / (Math.log(i + 2) / Math.log(2));
+                dcg += 1.0 / (Math.log(i + 2.0) / Math.log(2));
                 break;
             }
         }

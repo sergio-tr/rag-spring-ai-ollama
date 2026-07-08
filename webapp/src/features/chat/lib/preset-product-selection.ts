@@ -5,7 +5,8 @@ import { CHAT_DETERMINISTIC_DEFAULT_PRESET_ID } from "@/features/chat/lib/conver
 export const DEMO_WORST_PRESET_ID = "cafe0001-0001-4001-8001-000000000001";
 /** Seeded Demo_NaiveFullCorpus. */
 export const DEMO_NAIVE_PRESET_ID = "cafe0001-0001-4001-8001-000000000002";
-export const DEMO_BEST_PRESET_ID = CHAT_DETERMINISTIC_DEFAULT_PRESET_ID;
+/** Seeded Demo_Best (production bundle — manual selection only after P3 default alignment). */
+export const DEMO_BEST_PRESET_ID = "cafe0001-0001-4001-8001-000000000003";
 
 export const P0_PRESET_ID = "cafe0001-0001-4001-8001-000000000010";
 export const P1_PRESET_ID = "cafe0001-0001-4001-8001-000000000011";

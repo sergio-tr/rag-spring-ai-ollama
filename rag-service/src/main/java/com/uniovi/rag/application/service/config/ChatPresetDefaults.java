@@ -9,15 +9,15 @@ import org.springframework.stereotype.Component;
 /**
  * Deterministic default for conversation-level chat presets when none is persisted.
  *
- * <p>The UUID matches seeded {@code Demo_Best} in {@code V18__demo_rag_presets.sql}. This keeps retrieval enabled
- * by default for project-scoped chat when no preset is persisted.
+ * <p>The UUID matches seeded {@code P3} (chunk-level dense retrieval) in {@code V44__tfg_experimental_presets_p0_p14.sql}.
+ * RAG-3 recommended P3 as the production default; Demo_Best remains in the catalog for manual selection.
  */
 @Component
 public class ChatPresetDefaults {
 
-    /** Stable id from migration {@code V18__demo_rag_presets.sql} - preset name {@code Demo_Best}. */
+    /** Stable id from migration {@code V44} - experimental preset code {@code P3}. */
     public static final UUID DETERMINISTIC_DEFAULT_CHAT_PRESET_ID =
-            UUID.fromString("cafe0001-0001-4001-8001-000000000003");
+            UUID.fromString("cafe0001-0001-4001-8001-000000000013");
 
     private final RagPresetRepository ragPresetRepository;
 
@@ -25,7 +25,7 @@ public class ChatPresetDefaults {
         this.ragPresetRepository = ragPresetRepository;
     }
 
-    /** Returns persisted Demo_Best entity when present. */
+    /** Returns persisted P3 default preset entity when present. */
     public Optional<RagPresetEntity> loadDeterministicDefaultPreset() {
         return ragPresetRepository.findById(DETERMINISTIC_DEFAULT_CHAT_PRESET_ID);
     }

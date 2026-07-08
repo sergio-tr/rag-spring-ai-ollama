@@ -98,7 +98,7 @@ describe("CreateConversationPresetSelector", () => {
     expect(screen.queryByRole("option", { name: /Production assistant configuration/i })).not.toBeInTheDocument();
   });
 
-  it("preselects a concrete compatible preset", () => {
+  it("preselects P3 when both Demo_Best and P3 are compatible", () => {
     hooksMock.useProjectCompatiblePresets.mockReturnValue({
       ...compatibleCatalog,
       data: {
@@ -128,7 +128,7 @@ describe("CreateConversationPresetSelector", () => {
     });
     renderSelector();
     const select = screen.getByTestId("chat-new-conversation-preset") as HTMLSelectElement;
-    expect(select.value).toBe("cafe0001-0001-4001-8001-000000000003");
+    expect(select.value).toBe(P3_PRESET_ID);
   });
 
   it("shows fallback hint when Demo_Best is incompatible", () => {

@@ -79,7 +79,7 @@ public final class TaskLlmRoleDefaults {
         map.put(
                 TaskLlmTask.EVALUATION_JUDGE,
                 new RoleDefault(
-                        "gemma4:12b",
+                        DEFAULT_QWEN_9B,
                         params(0.0, 0.9, 42L, 512, 0.0, 0.0, DEFAULT_JSON_OBJECT, false, null)));
         map.put(
                 TaskLlmTask.LLM_BASELINE_EVALUATION,
