@@ -84,6 +84,10 @@ See [../../observability/README.md](../../observability/README.md).
 
 ## 7. Troubleshooting
 
+### Compose `ports: []` does not remove base ports (prod overlays)
+
+Docker Compose **merges** port lists across files; `ports: []` in `compose.prod*.yml` does **not** clear ports from `docker-compose.yml`. Prod overlays use `ports: !reset []` so only `reverse-proxy` publishes host ports in `--server` mode.
+
 ### `docker-credential-desktop.exe: exec format error` during `docker build`
 
 The runner user (`eii`) has a **Docker Desktop** credential helper in `~/.docker/config.json`. That binary is for Windows/WSL Desktop and **fails on native Linux**.

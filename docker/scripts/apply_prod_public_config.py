@@ -18,6 +18,8 @@ DEFAULT_HOST = "156.35.95.27"
 DEFAULT_HTTPS_PORT = "8443"
 DEFAULT_HTTP_PORT = "80"
 DEFAULT_LITELLM_BASE_URL = "http://156.35.160.78:4000"
+DEFAULT_LITELLM_CHAT_MODEL = "qwen3.5:9b"
+DEFAULT_LITELLM_EMBEDDING_MODEL = "bge-m3"
 DEFAULT_MAIL_USERNAME = "support.rag@gmail.es"
 
 
@@ -94,6 +96,7 @@ def main() -> int:
         "REVERSE_PROXY_SERVER_NAME": host,
         "TLS_CERT_COMMON_NAME": host,
         "TLS_CERT_IP_1": host,
+        "TLS_CERT_IP_2": "127.0.0.1",
         "PUBLIC_APP_URL": public_base,
         "PUBLIC_API_URL": api_base,
         "NEXT_PUBLIC_APP_URL": public_base,
@@ -110,6 +113,12 @@ def main() -> int:
         "RAG_LLM_DEFAULT_EMBEDDING_PROVIDER": "OPENAI_COMPATIBLE",
         "LITELLM_BASE_URL": os.environ.get("LITELLM_BASE_URL", DEFAULT_LITELLM_BASE_URL).strip()
         or DEFAULT_LITELLM_BASE_URL,
+        "LITELLM_CHAT_MODEL": os.environ.get("LITELLM_CHAT_MODEL", DEFAULT_LITELLM_CHAT_MODEL).strip()
+        or DEFAULT_LITELLM_CHAT_MODEL,
+        "LITELLM_EMBEDDING_MODEL": os.environ.get(
+            "LITELLM_EMBEDDING_MODEL", DEFAULT_LITELLM_EMBEDDING_MODEL
+        ).strip()
+        or DEFAULT_LITELLM_EMBEDDING_MODEL,
         "RAG_AUTH_WEBAPP_BASE_URL": public_base,
         "RAG_AUTH_BACKEND_BASE_URL": public_base,
         "RAG_CORS_ALLOWED_ORIGINS": public_base,
