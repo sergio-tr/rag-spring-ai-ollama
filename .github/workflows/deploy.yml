@@ -21,16 +21,13 @@ jobs:
         env:
           DEPLOY_DIR_RAW: ${{ vars.DEPLOY_DIR }}
           DEPLOY_HEALTH_URL: ${{ vars.DEPLOY_HEALTH_URL }}
+          PRODUCTION_HTTPS_PORT: ${{ vars.PRODUCTION_HTTPS_PORT }}
         run: |
           set -euo pipefail
-          required_vars=(DEPLOY_DIR_RAW DEPLOY_HEALTH_URL)
-          for name in "${required_vars[@]}"; do
-            if [ -z "${!name:-}" ]; then
-              var_label="${name%_RAW}"
-              echo "::error::${var_label} is required (set as a repository or environment variable)"
-              exit 1
-            fi
-          done
+          if [ -z "${DEPLOY_DIR_RAW:-}" ]; then
+            echo "::error::DEPLOY_DIR is required (set as a repository variable)"
+            exit 1
+          fi
           DEPLOY_DIR="${DEPLOY_DIR_RAW/#\~/$HOME}"
           DEPLOY_DIR="${DEPLOY_DIR%/}"
           if [ ! -d "$DEPLOY_DIR/.git" ]; then
@@ -38,6 +35,11 @@ jobs:
             exit 1
           fi
           echo "DEPLOY_DIR=$DEPLOY_DIR" >> "$GITHUB_ENV"
+          _https_port="${PRODUCTION_HTTPS_PORT:-8443}"
+          if [ -z "${DEPLOY_HEALTH_URL:-}" ]; then
+            DEPLOY_HEALTH_URL="https://127.0.0.1:${_https_port}/actuator/health/liveness"
+          fi
+          echo "DEPLOY_HEALTH_URL=$DEPLOY_HEALTH_URL" >> "$GITHUB_ENV"
           echo "Deploy directory: $DEPLOY_DIR"
           echo "Health check URL configured (value not printed)."
 
@@ -48,6 +50,64 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
           echo "Deployed commit: $(git rev-parse --short HEAD)"
+
+      - name: Ensure server environment files
+        working-directory: ${{ env.DEPLOY_DIR }}
+        run: |
+          set -euo pipefail
+          # .env files are gitignored; bootstrap from *.env.example when missing (never --force).
+          ./docker/scripts/create-env-all.sh
+          required_env_files=(
+            db/.env
+            rag-service/.env
+            classifier-service/.env
+            webapp/.env
+            observability/.env
+          )
+          missing=()
+          for rel in "${required_env_files[@]}"; do
+            if [ ! -f "$rel" ]; then
+              missing+=("$rel")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing server environment files after bootstrap: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Apply production secrets to server .env files
+        working-directory: ${{ env.DEPLOY_DIR }}
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_SERVICE: ${{ secrets.JWT_SERVICE }}
+          LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+        run: |
+          set -euo pipefail
+          python3 ./docker/scripts/apply_deploy_secrets.py
+
+      - name: Apply production public URL (HTTPS 8443 phase)
+        working-directory: ${{ env.DEPLOY_DIR }}
+        env:
+          PRODUCTION_PUBLIC_HOST: ${{ vars.PRODUCTION_PUBLIC_HOST }}
+          PRODUCTION_HTTPS_PORT: ${{ vars.PRODUCTION_HTTPS_PORT }}
+          PRODUCTION_HTTP_PORT: ${{ vars.PRODUCTION_HTTP_PORT }}
+          PRODUCTION_ENFORCE_HTTPS: ${{ vars.PRODUCTION_ENFORCE_HTTPS }}
+          LITELLM_BASE_URL: ${{ vars.LITELLM_BASE_URL }}
+        run: |
+          set -euo pipefail
+          python3 ./docker/scripts/apply_prod_public_config.py
 
       - name: Validate Compose configuration
         working-directory: ${{ env.DEPLOY_DIR }}
@@ -64,10 +124,11 @@ jobs:
 
       - name: Post-deploy health check
         env:
-          DEPLOY_HEALTH_URL: ${{ vars.DEPLOY_HEALTH_URL }}
+          DEPLOY_HEALTH_URL: ${{ env.DEPLOY_HEALTH_URL }}
         run: |
           set -euo pipefail
-          curl -fsS --max-time 120 "$DEPLOY_HEALTH_URL"
+          # Self-signed TLS on the university server; -k is intentional for localhost health probe.
+          curl -fsSk --max-time 120 "$DEPLOY_HEALTH_URL"
 
       - name: Deployment diagnostics
         if: always() && env.DEPLOY_DIR != ''

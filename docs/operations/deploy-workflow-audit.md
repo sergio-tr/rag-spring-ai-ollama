@@ -7,7 +7,7 @@
 
 ## Summary
 
-The workflow runs on a **self-hosted** runner on the application server (`156.35.95.27`). It syncs `DEPLOY_DIR` to `origin/main`, validates Compose, builds and starts the production stack locally, then curls `DEPLOY_HEALTH_URL`.
+The workflow runs on a **self-hosted** runner on the application server (`156.35.95.27`). It syncs `DEPLOY_DIR` to `origin/main`, bootstraps missing `.env` files from each module's `.env.example`, **writes GitHub repository secrets into those `.env` files** (`docker/scripts/apply_deploy_secrets.py`), validates Compose, builds and starts the production stack locally, then curls `DEPLOY_HEALTH_URL`.
 
 **No SSH:** Legacy secrets `VM_HOST`, `VM_USER`, `VM_SSH_KEY`, and `VM_DEPLOY_DIR` are **obsolete**. Use repository **Variables** instead.
 
@@ -27,8 +27,30 @@ The workflow runs on a **self-hosted** runner on the application server (`156.35
 
 | Variable | Use | Notes |
 | -------- | ----- | -------- |
-| `DEPLOY_DIR` | Git checkout path on the runner host | Must be a git repository |
-| `DEPLOY_HEALTH_URL` | HTTP(S) health check after deploy | Reachable from the runner (e.g. reverse-proxy liveness URL) |
+| `DEPLOY_DIR` | Git checkout path on the runner host | Must be a git repository; `.env` files bootstrapped then secrets applied each deploy |
+| `DEPLOY_HEALTH_URL` | Post-deploy health check | Optional; defaults to `https://127.0.0.1:8443/actuator/health/liveness` (uses `curl -k` for self-signed TLS) |
+| `PRODUCTION_PUBLIC_HOST` | Public hostname or IP | Optional; default **`156.35.95.27`** |
+| `PRODUCTION_HTTPS_PORT` | Host HTTPS port | Optional; default **`8443`** (set **`443`** in phase 2) |
+| `PRODUCTION_HTTP_PORT` | Host HTTP port | Optional; default **`80`** |
+| `LITELLM_BASE_URL` | LiteLLM on model server | Optional; default **`http://156.35.160.78:4000`** |
+
+### Repository secrets (written into server `.env` on deploy)
+
+| GitHub secret | Target file | Environment key |
+| ------------- | ------------- | ---------------- |
+| `POSTGRES_PASSWORD` | `db/.env` | `POSTGRES_PASSWORD` |
+| `SPRING_DATASOURCE_PASSWORD` (or `POSTGRES_PASSWORD`) | `rag-service/.env` | `SPRING_DATASOURCE_PASSWORD` |
+| `JWT_SECRET` (or `JWT_SERVICE`) | `rag-service/.env` | `RAG_JWT_SECRET` |
+| `LITELLM_API_KEY` (or `OPENAI_API_KEY`) | `rag-service/.env` | `OPENAI_COMPATIBLE_API_KEY` |
+| `MAIL_PASSWORD` | `rag-service/.env` | `SPRING_MAIL_PASSWORD` |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_ID` | `rag-service/.env` | `RAG_AUTH_OAUTH_GOOGLE_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_ID` |
+| `GOOGLE_CLIENT_SECRET` / `GOOGLE_OAUTH_CLIENT_SECRET` | `rag-service/.env` | `RAG_AUTH_OAUTH_GOOGLE_CLIENT_SECRET`, `GOOGLE_OAUTH_CLIENT_SECRET` |
+| `ADMIN_PASSWORD` | `rag-service/.env` | `RAG_BOOTSTRAP_ADMIN_PASSWORD` |
+| `GRAFANA_ADMIN_PASSWORD` | `observability/.env` | `GRAFANA_ADMIN_PASSWORD` |
+
+Not mapped by deploy: `SONAR_TOKEN` (CI only), `SESSION_SECRET` (no current consumer in Compose/Spring).
+
+Non-secret production settings (public URLs, `LITELLM_BASE_URL`, bootstrap admin email) remain in server `.env` from `.env.example` or manual edits; deploy does not overwrite existing non-secret keys.
 
 Optional documentation variables: `PRODUCTION_BASE_URL`, `FRONTEND_PUBLIC_URL`, `BACKEND_PUBLIC_URL`, `GITHUB_PAGES_URL`.
 
