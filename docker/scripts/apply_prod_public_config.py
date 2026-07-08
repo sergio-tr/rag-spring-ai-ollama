@@ -94,6 +94,7 @@ def main() -> int:
         "REVERSE_PROXY_SERVER_NAME": host,
         "TLS_CERT_COMMON_NAME": host,
         "TLS_CERT_IP_1": host,
+        "TLS_CERT_IP_2": "127.0.0.1",
         "PUBLIC_APP_URL": public_base,
         "PUBLIC_API_URL": api_base,
         "NEXT_PUBLIC_APP_URL": public_base,

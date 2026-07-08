@@ -129,12 +129,13 @@ jobs:
           ./docker/scripts/docker-compose.sh up prod --server --obs --obs-private --no-env-prompt
 
       - name: Post-deploy health check
+        working-directory: ${{ env.DEPLOY_DIR }}
         env:
           DEPLOY_HEALTH_URL: ${{ env.DEPLOY_HEALTH_URL }}
+          PRODUCTION_HTTPS_PORT: ${{ vars.PRODUCTION_HTTPS_PORT }}
         run: |
           set -euo pipefail
-          # Self-signed TLS on the university server; -k is intentional for localhost health probe.
-          curl -fsSk --max-time 120 "$DEPLOY_HEALTH_URL"
+          bash ./docker/scripts/post-deploy-healthcheck.sh
 
       - name: Deployment diagnostics
         if: always() && env.DEPLOY_DIR != ''
