@@ -32,17 +32,18 @@ jobs:
         working-directory: rag-service
         run: ./mvnw -q javadoc:javadoc -DskipTests
 
+      - uses: ./.github/actions/cache-npm-webapp
+
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: webapp/package-lock.json
+          node-version-file: webapp/package.json
+          package-manager-cache: false
 
       - name: Build frontend TypeDoc
         working-directory: webapp
         run: |
-          npm ci
+          npm install --no-audit --no-fund
           npm run doc
 
       - name: Assemble public documentation site
@@ -52,7 +53,7 @@ jobs:
           rm -rf "$SITE_DIR"
           mkdir -p "$SITE_DIR/backend-javadoc" "$SITE_DIR/frontend-typedoc" "$SITE_DIR/classifier"
           cp docs/index.html "$SITE_DIR/index.html"
-          cp -r rag-service/target/site/apidocs/. "$SITE_DIR/backend-javadoc/"
+          cp -r rag-service/target/reports/apidocs/. "$SITE_DIR/backend-javadoc/"
           cp -r webapp/docs/api/. "$SITE_DIR/frontend-typedoc/"
           cat > "$SITE_DIR/classifier/index.html" <<'EOF'
           <!DOCTYPE html>
@@ -83,6 +84,9 @@ jobs:
     steps:
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          # First deploy: enable Pages (GitHub Actions source) when not configured yet.
+          enablement: true
 
       - name: Deploy to GitHub Pages
         id: deployment

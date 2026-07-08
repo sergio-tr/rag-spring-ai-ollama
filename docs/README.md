@@ -62,7 +62,7 @@
 
 | Stack | Command | Output |
 | --- | --- | --- |
-| Java | `cd rag-service && ./mvnw javadoc:javadoc` | `rag-service/target/site/apidocs` |
+| Java | `cd rag-service && ./mvnw javadoc:javadoc` | `rag-service/target/reports/apidocs` |
 | OpenAPI | `/v3/api-docs` when enabled; or `rag-service/scripts/export-openapi.sh` | JSON |
 | TypeScript | `cd webapp && npm run doc` | `webapp/docs/api` |
 
@@ -82,6 +82,7 @@
 | [`sonar.yml`](../.github/workflows/sonar.yml) | `workflow_dispatch` | Ad-hoc SonarCloud analysis; PR analysis runs inside `ci.yml` → `reusable-ci-core` |
 | [`build-images.yml`](../.github/workflows/build-images.yml) | `release` **published** + `workflow_dispatch` | Container image builds (GHCR); gates on successful [`ci.yml`](../.github/workflows/ci.yml) for the resolved commit |
 | [`deploy.yml`](../.github/workflows/deploy.yml) | `workflow_dispatch` | **Manual deploy** to VM; **gates** on successful [`ci.yml`](../.github/workflows/ci.yml) for the same commit SHA - see [operations/deploy-workflow-audit.md](operations/deploy-workflow-audit.md) |
+| [`docs-pages.yml`](../.github/workflows/docs-pages.yml) | `push` on `main` + `workflow_dispatch` | Publishes Javadoc + TypeDoc to **GitHub Pages** (`docs-site/`). First run auto-enables Pages via `configure-pages` `enablement: true`; if blocked by org policy, set **Settings → Pages → Source: GitHub Actions** once and re-run. |
 
 Details and the testing pyramid: [testing/README.md](testing/README.md) (including **Quality gates before deploy**). Workflows vs gates (aligned): [development/e2e-testing-strategy.md](development/e2e-testing-strategy.md). Load tool roles: [performance/README.md](performance/README.md). Release checklist: [operations/release-readiness-checklist.md](operations/release-readiness-checklist.md).
 
