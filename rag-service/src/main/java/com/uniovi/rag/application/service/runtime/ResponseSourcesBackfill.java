@@ -319,7 +319,7 @@ public final class ResponseSourcesBackfill {
     }
 
     private static final Pattern ACTA_FILENAME_IN_TEXT =
-            Pattern.compile("(?i)\\b(ACTA\\s+\\d+\\.pdf)\\b");
+            Pattern.compile("(?i)\\b(ACTA\\s+\\d+\\.pdf)\\b", Pattern.CANON_EQ);
 
     private static String filenameFromBlockText(String text) {
         if (text == null || text.isBlank()) {
@@ -330,7 +330,7 @@ public final class ResponseSourcesBackfill {
     }
 
     private static final Pattern ISO_DATE_IN_TEXT =
-            Pattern.compile("\\b(20\\d{2}-\\d{2}-\\d{2})\\b");
+            Pattern.compile("\\b(20\\d{2}-\\d{2}-\\d{2})\\b", Pattern.CANON_EQ);
 
     private static String dateFromBlockText(String text) {
         if (text == null || text.isBlank()) {

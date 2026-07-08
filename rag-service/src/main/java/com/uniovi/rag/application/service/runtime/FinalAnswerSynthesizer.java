@@ -19,25 +19,27 @@ import java.util.regex.Pattern;
  */
 public final class FinalAnswerSynthesizer {
 
+    private static final int UNICODE_CANON = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.CANON_EQ;
+
     private FinalAnswerSynthesizer() {}
 
     private static final Pattern JUDGE_FORMAT_LEAK =
             Pattern.compile(
-                    "(?im)^\\s*Answer\\s*:\\s*(?:YES|NO)\\s*$|(?im)^\\s*Explanation\\s*:.*$|(?im)^\\s*FEEDBACK\\s*:.*$");
+                    "(?im)^\\s*Answer\\s*:\\s*(?:YES|NO)\\s*$|(?im)^\\s*Explanation\\s*:.*+$|(?im)^\\s*FEEDBACK\\s*:.*+$");
     private static final Pattern ACTA_TOPIC_VAGUE =
             Pattern.compile(
-                    "(?i)(?:en el acta correspondiente|en la reunión específica del documento consultado|documento consultado)",
-                    Pattern.UNICODE_CASE);
+                    "(?:en el acta correspondiente|en la reunión específica del documento consultado|documento consultado)",
+                    UNICODE_CANON);
     private static final Pattern INTERNAL_LABEL =
             Pattern.compile(
                     "\\b(?:PARENT_P\\d+|PARENT_P[A-Z_]+|baseline_floor[\\w:]*|RETRIEVAL_WORKFLOW_ROUTE|DETERMINISTIC_TOOL_ROUTE|FUNCTION_CALLING_ROUTE|ADVISOR_ROUTE|deterministic-tool|function-calling|topic_not_in_context|not_in_context|function_sentinel_abstention|native_not_constraint_complete|advanced_preset_parent_floor|outcome=\\w+|routeKind=\\w+)\\b",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-    private static final Pattern BARE_COUNT = Pattern.compile("^\\s*(\\d{1,4})\\s*\\.?\\s*$");
-    private static final Pattern ACTA_REF = Pattern.compile("(?i)(acta[^\\s,;.]{0,40}\\.pdf)");
+                    UNICODE_CANON);
+    private static final Pattern BARE_COUNT = Pattern.compile("^\\s*(\\d{1,4})\\s*\\.?\\s*$", Pattern.CANON_EQ);
+    private static final Pattern ACTA_REF = Pattern.compile("(?i)(acta[^\\s,;.]{0,40}\\.pdf)", UNICODE_CANON);
     private static final Pattern TIMING_ONLY_SUMMARY =
             Pattern.compile(
-                    "(?i)(duración|duracion|de \\d{1,2}:\\d{2}|asistentes?|participantes?)",
-                    Pattern.UNICODE_CASE);
+                    "(?:duración|duracion|de \\d{1,2}:\\d{2}|asistentes?|participantes?)",
+                    UNICODE_CANON);
 
     public static RagExecutionResult apply(QueryPlan plan, RagExecutionResult result) {
         if (result == null) {

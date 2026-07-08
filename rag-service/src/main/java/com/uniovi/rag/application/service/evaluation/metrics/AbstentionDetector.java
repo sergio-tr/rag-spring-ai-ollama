@@ -10,6 +10,8 @@ import java.util.regex.Pattern;
 /** Deterministic abstention detection from runtime metadata and normalized answer text. */
 public final class AbstentionDetector {
 
+    private static final int UNICODE_CANON = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.CANON_EQ;
+
     public static final String KEY_ABSTAINED = "abstained";
     public static final String KEY_ABSTENTION_REASON = "abstentionReason";
     public static final String KEY_ABSTENTION_SOURCE = "abstentionSource";
@@ -33,17 +35,17 @@ public final class AbstentionDetector {
 
     private static final List<Pattern> EXTENDED_PATTERNS =
             List.of(
-                    Pattern.compile("no puedo (proporcionar|encontrar|responder|determinar|confirmar|indicar|detallar|precisar|acceder)"),
-                    Pattern.compile("no (encuentro|dispongo|tengo|cuento) (con )?(informacion|acceso|datos|constancia|contexto)"),
-                    Pattern.compile("no hay informacion"),
-                    Pattern.compile("no es posible (determinar|responder|proporcionar|saber|confirmar)"),
-                    Pattern.compile("no aparece en (el|los|la|las)? ?(contexto|documento|acta|actas|fuentes)"),
-                    Pattern.compile("no figura en"),
-                    Pattern.compile("i (cannot|can't|couldn't|could not|don't|do not|didn't) (find|provide|know|answer|determine|access)"),
-                    Pattern.compile("i don'?t have (access|enough|sufficient)"),
-                    Pattern.compile("no information (is )?available"),
-                    Pattern.compile("not (mentioned|found|available|stated|specified) in the (context|provided|document|sources)"),
-                    Pattern.compile("unable to (find|provide|determine|answer)"));
+                    Pattern.compile("no puedo (proporcionar|encontrar|responder|determinar|confirmar|indicar|detallar|precisar|acceder)", UNICODE_CANON),
+                    Pattern.compile("no (encuentro|dispongo|tengo|cuento) (con )?(informacion|acceso|datos|constancia|contexto)", UNICODE_CANON),
+                    Pattern.compile("no hay informacion", UNICODE_CANON),
+                    Pattern.compile("no es posible (determinar|responder|proporcionar|saber|confirmar)", UNICODE_CANON),
+                    Pattern.compile("no aparece en (el|los|la|las)? ?(contexto|documento|acta|actas|fuentes)", UNICODE_CANON),
+                    Pattern.compile("no figura en", UNICODE_CANON),
+                    Pattern.compile("i (cannot|can't|couldn't|could not|don't|do not|didn't) (find|provide|know|answer|determine|access)", UNICODE_CANON),
+                    Pattern.compile("i don'?t have (access|enough|sufficient)", UNICODE_CANON),
+                    Pattern.compile("no information (is )?available", UNICODE_CANON),
+                    Pattern.compile("not (mentioned|found|available|stated|specified) in the (context|provided|document|sources)", UNICODE_CANON),
+                    Pattern.compile("unable to (find|provide|determine|answer)", UNICODE_CANON));
 
     private AbstentionDetector() {}
 

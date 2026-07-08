@@ -20,15 +20,14 @@ import java.util.regex.Pattern;
 /** Deterministic date grounding helpers for meeting-minute RAG. */
 public final class DateGroundingSupport {
 
-    private static final Pattern ISO_DATE = Pattern.compile("\\b(\\d{4}-\\d{2}-\\d{2})\\b");
-    private static final Pattern DMY_NUMERIC = Pattern.compile("\\b(\\d{1,2})[/-](\\d{1,2})[/-](\\d{4})\\b");
-    private static final Pattern D_DE_M_DE_Y = Pattern.compile(
-            "\\b(\\d{1,2})\\s+de\\s+([a-záéíóúñ]+)\\s+de[l]?\\s+(\\d{4})\\b",
-            Pattern.CASE_INSENSITIVE);
-    private static final Pattern MONTH_YEAR = Pattern.compile(
-            "\\b([a-záéíóúñ]+)\\s+(\\d{4})\\b",
-            Pattern.CASE_INSENSITIVE);
-    private static final Pattern YEAR = Pattern.compile("\\b(20\\d{2}|19\\d{2})\\b");
+    private static final int UNICODE_CANON = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.CANON_EQ;
+
+    private static final Pattern ISO_DATE = Pattern.compile("\\b(\\d{4}-\\d{2}-\\d{2})\\b", Pattern.CANON_EQ);
+    private static final Pattern DMY_NUMERIC = Pattern.compile("\\b(\\d{1,2})[/-](\\d{1,2})[/-](\\d{4})\\b", Pattern.CANON_EQ);
+    private static final Pattern D_DE_M_DE_Y =
+            Pattern.compile("\\b(\\d{1,2})\\s+de\\s+([a-záéíóúñ]+)\\s+de[l]?\\s+(\\d{4})\\b", UNICODE_CANON);
+    private static final Pattern MONTH_YEAR = Pattern.compile("\\b([a-záéíóúñ]+)\\s+(\\d{4})\\b", UNICODE_CANON);
+    private static final Pattern YEAR = Pattern.compile("\\b(20\\d{2}|19\\d{2})\\b", Pattern.CANON_EQ);
 
     private DateGroundingSupport() {}
 
