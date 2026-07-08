@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.chat;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -11,9 +12,9 @@ class RuntimeOverrideNormalizerTest {
     @Test
     void normalize_returnsEmptyWhenCandidateNullOrEmpty() {
         assertThat(RuntimeOverrideNormalizer.normalize(null, Map.of("topK", 5)))
-                .isEqualTo(new RuntimeOverrideNormalizer.NormalizedOverride(Map.of(), java.util.List.of()));
+                .isEqualTo(new RuntimeOverrideNormalizer.NormalizedOverride(Map.of(), List.of()));
         assertThat(RuntimeOverrideNormalizer.normalize(Map.of(), Map.of("topK", 5)))
-                .isEqualTo(new RuntimeOverrideNormalizer.NormalizedOverride(Map.of(), java.util.List.of()));
+                .isEqualTo(new RuntimeOverrideNormalizer.NormalizedOverride(Map.of(), List.of()));
     }
 
     @Test
