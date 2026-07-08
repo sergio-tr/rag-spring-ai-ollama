@@ -27,5 +27,5 @@ DNS.2 = host.docker.internal
 DNS.3 = uniovi.es
 DNS.4 = www.uniovi.es
 DNS.5 = rag.uniovi.es
+DNS.5 = hatchback-obsession-staring.ngrok-free.dev
 IP.1 = 127.0.0.1
-IP.2 = 156.35.95.27

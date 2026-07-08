@@ -2,8 +2,8 @@
 """
 Apply production public URL and reverse-proxy settings to webapp/.env and rag-service/.env.
 
-Defaults target the university application server on HTTPS port 8443 (phase before 443).
-Override via environment variables (GitHub Actions repository variables on deploy).
+Defaults target the reserved ngrok public URL (Google OAuth requires a hostname, not an IP).
+Override via GitHub Actions repository variables (PRODUCTION_PUBLIC_HOST, etc.) on deploy.
 """
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ from pathlib import Path
 
 KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=")
 
-DEFAULT_HOST = "156.35.95.27"
-DEFAULT_HTTPS_PORT = "8443"
+DEFAULT_HOST = "hatchback-obsession-staring.ngrok-free.dev"
+DEFAULT_HTTPS_PORT = "443"
 DEFAULT_HTTP_PORT = "80"
 DEFAULT_LITELLM_BASE_URL = "http://156.35.160.78:4000"
 DEFAULT_LITELLM_CHAT_MODEL = "qwen3.5:9b"
@@ -79,7 +79,7 @@ def main() -> int:
     host = os.environ.get("PRODUCTION_PUBLIC_HOST", DEFAULT_HOST).strip() or DEFAULT_HOST
     https_port = int(os.environ.get("PRODUCTION_HTTPS_PORT", DEFAULT_HTTPS_PORT).strip() or DEFAULT_HTTPS_PORT)
     http_port = int(os.environ.get("PRODUCTION_HTTP_PORT", DEFAULT_HTTP_PORT).strip() or DEFAULT_HTTP_PORT)
-    enforce_https = os.environ.get("PRODUCTION_ENFORCE_HTTPS", "1").strip() not in ("0", "false", "False")
+    enforce_https = os.environ.get("PRODUCTION_ENFORCE_HTTPS", "0").strip() not in ("0", "false", "False")
 
     public_base = public_https_base(host, https_port)
     suffix = https_port_suffix(https_port)
@@ -95,12 +95,14 @@ def main() -> int:
         "REVERSE_PROXY_HTTPS_PORT_SUFFIX": suffix,
         "REVERSE_PROXY_SERVER_NAME": host,
         "TLS_CERT_COMMON_NAME": host,
-        "TLS_CERT_IP_1": host,
-        "TLS_CERT_IP_2": "127.0.0.1",
+        "TLS_CERT_DNS_1": host,
+        "TLS_CERT_IP_1": "127.0.0.1",
+        "TLS_CERT_IP_2": "",
         "PUBLIC_APP_URL": public_base,
         "PUBLIC_API_URL": api_base,
         "NEXT_PUBLIC_APP_URL": public_base,
         "NEXT_PUBLIC_API_BASE_URL": "",
+        "NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED": "true",
     }
     for key, value in webapp_updates.items():
         set_env_key(webapp_env, key, value)

@@ -35,7 +35,7 @@ jobs:
             exit 1
           fi
           echo "DEPLOY_DIR=$DEPLOY_DIR" >> "$GITHUB_ENV"
-          _https_port="${PRODUCTION_HTTPS_PORT:-8443}"
+          _https_port="${PRODUCTION_HTTPS_PORT:-443}"
           if [ -z "${DEPLOY_HEALTH_URL:-}" ]; then
             DEPLOY_HEALTH_URL="https://127.0.0.1:${_https_port}/actuator/health/liveness"
           fi
@@ -97,7 +97,7 @@ jobs:
           set -euo pipefail
           python3 ./docker/scripts/apply_deploy_secrets.py
 
-      - name: Apply production public URL (HTTPS 8443 phase)
+      - name: Apply production public URL (ngrok / public hostname)
         working-directory: ${{ env.DEPLOY_DIR }}
         env:
           PRODUCTION_PUBLIC_HOST: ${{ vars.PRODUCTION_PUBLIC_HOST }}
