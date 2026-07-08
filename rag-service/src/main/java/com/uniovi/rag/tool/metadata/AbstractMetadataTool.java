@@ -4267,7 +4267,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (docId != null && !docId.isBlank()) {
             return "id:" + docId;
         }
-        return "chunk:" + (doc.getId() != null ? doc.getId() : UUID.randomUUID().toString());
+        return "chunk:" + String.valueOf(doc.getId());
     }
 
     /** Canonical meeting key for minute-level dedupe (one reunion per calendar date + PDF title when known). */

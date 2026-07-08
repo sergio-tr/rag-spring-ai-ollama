@@ -87,6 +87,9 @@ public class ModelsCatalogService {
         Set<String> installed;
         try {
             installed = ollamaApiClient.listModelNames();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            installed = Set.of();
         } catch (Exception e) {
             installed = Set.of();
         }

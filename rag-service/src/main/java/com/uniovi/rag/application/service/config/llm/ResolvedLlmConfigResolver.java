@@ -148,7 +148,7 @@ public class ResolvedLlmConfigResolver {
             JsonNode terminalConversationMergedOverride,
             Optional<String> chatModelOverride) {
         JsonNode requestOverride = null;
-        if (chatModelOverride != null && chatModelOverride.isPresent() && !chatModelOverride.get().isBlank()) {
+        if (chatModelOverride.isPresent() && !chatModelOverride.get().isBlank()) {
             requestOverride = objectMapper.createObjectNode().put("llmModel", chatModelOverride.get().trim());
         }
         return resolve(userId, projectId, presetId, terminalConversationMergedOverride, requestOverride);

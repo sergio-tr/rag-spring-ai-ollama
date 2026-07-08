@@ -31,7 +31,7 @@ public final class DownstreamRagAnswerPrompt {
     }
 
     private static String docBlock(Document d) {
-        String id = d.getId() != null ? d.getId() : "?";
+        String id = String.valueOf(d.getId());
         String text = d.getText() != null ? d.getText() : "";
         return "--- chunk id=" + id + " ---\n" + text;
     }

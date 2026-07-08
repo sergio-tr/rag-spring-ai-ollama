@@ -20,11 +20,11 @@ public final class MarkdownAnswerFormatter {
                     Pattern.UNICODE_CASE | Pattern.CANON_EQ);
     private static final Pattern INLINE_SOURCE_ON_LINE =
             Pattern.compile(
-                    "^(.+?)\\s+((?:Source|Fuentes?(?:\\s+consultadas)?|Fuente)\\s*:.+)$",
+                    "^(.+?)\\s+((?:Source|Fuentes?(?:\\s+consultadas)?)\\s*:.+)$",
                     Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.CANON_EQ);
     private static final Pattern SOURCE_ONLY_LINE =
             Pattern.compile(
-                    "^(?:Source|Fuentes?(?:\\s+consultadas)?|Fuente)\\s*:.+$",
+                    "^(?:Source|Fuentes?(?:\\s+consultadas)?)\\s*:.+$",
                     Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.CANON_EQ);
     private static final Pattern PARAGRAPH_START =
             Pattern.compile(
@@ -164,7 +164,7 @@ public final class MarkdownAnswerFormatter {
                 return false;
             }
         }
-        return !line.matches(".*\\s(?:Source|Fuentes?|Fuente)\\s*:.*");
+        return !line.matches(".*\\s(?:Source|Fuentes?)\\s*:.*");
     }
 
     private static void ensureBlankLine(List<String> out) {

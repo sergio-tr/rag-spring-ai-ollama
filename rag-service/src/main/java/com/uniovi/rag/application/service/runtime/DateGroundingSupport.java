@@ -277,10 +277,10 @@ public final class DateGroundingSupport {
 
     private static int mismatchDistance(RetrievalCandidate candidate, RequestedDate requested) {
         CandidateDateProfile p = profile(candidate);
-        if (p.date().isEmpty() || requested == null) {
+        if (!p.date().isPresent() || requested == null) {
             return Integer.MAX_VALUE / 2;
         }
-        LocalDate d = p.date().get();
+        LocalDate d = p.date().orElseThrow();
         return switch (requested.precision()) {
             case DAY -> Math.abs((int) (d.toEpochDay() - parseRequestedDay(requested).map(LocalDate::toEpochDay).orElse(0L)));
             case MONTH -> parseRequestedMonth(requested)

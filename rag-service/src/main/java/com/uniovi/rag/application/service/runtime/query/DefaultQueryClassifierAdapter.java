@@ -235,7 +235,7 @@ public class DefaultQueryClassifierAdapter implements QueryClassifierAdapter {
             tags.put("classifierFallbackReason", outcome.note());
         }
         if (outcome.classifierQueryType().isPresent()) {
-            tags.put("predictedQueryType", outcome.classifierQueryType().get().name());
+            tags.put("predictedQueryType", outcome.classifierQueryType().orElseThrow().name());
         }
         outcome.classifierConfidence().ifPresent(c -> tags.put("classifierConfidence", String.valueOf(c)));
         TelemetryRedaction.safeAttributes(tags).forEach(span::tag);

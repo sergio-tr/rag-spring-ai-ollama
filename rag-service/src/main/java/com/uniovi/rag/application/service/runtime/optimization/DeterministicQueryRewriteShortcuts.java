@@ -24,24 +24,24 @@ public final class DeterministicQueryRewriteShortcuts {
 
     private static final Pattern FIND_ACTAS_TOPIC =
             Pattern.compile(
-                    "(?is)(?:en qué actas|en que actas)\\s+(?:se\\s+)?(?:habla|hablan|mencionan|tratan)\\s+(?:sobre|de|acerca de)\\s+(.+?)\\??\\s*$");
+                    "(?isu)(?:en qué actas|en que actas)\\s+(?:se\\s+)?(?:habla|hablan|mencionan|tratan)\\s+(?:sobre|de|acerca de)\\s+(.+?)\\??\\s*$");
     private static final Pattern FIND_ACTA_TOPIC =
             Pattern.compile(
-                    "(?is)(?:en qué acta|en que acta)\\s+(?:se\\s+)?(?:habl[oó]|mencion[oó]|trat[oó]|coment[oó])\\s+(?:sobre|de|acerca de)\\s+(.+?)\\??\\s*$");
+                    "(?isu)(?:en qué acta|en que acta)\\s+(?:se\\s+)?(?:habl[oó]|mencion[oó]|trat[oó]|coment[oó])\\s+(?:sobre|de|acerca de)\\s+(.+?)\\??\\s*$");
     private static final Pattern LIST_ACTAS_ATTRIBUTE =
             Pattern.compile(
-                    "(?is)(?:dime|indica|lista)\\s+(?:qué|que)\\s+actas\\s+(?:tienen|con)\\s+(\\d+)\\s+asistentes?\\s*\\??\\s*$");
+                    "(?isu)(?:dime|indica|lista)\\s+(?:qué|que)\\s+actas\\s+(?:tienen|con)\\s+(\\d+)\\s+asistentes?\\s*\\??\\s*$");
     private static final Pattern LIST_LOCATIONS =
-            Pattern.compile("(?is)(?:dime|indica)\\s+(?:los\\s+)?lugares\\s+donde\\s+se\\s+han\\s+realizado\\s+las\\s+actas\\s*\\??\\s*$");
+            Pattern.compile("(?isu)(?:dime|indica)\\s+(?:los\\s+)?lugares\\s+donde\\s+se\\s+han\\s+realizado\\s+las\\s+actas\\s*\\??\\s*$");
     private static final Pattern PERSON_ATTENDANCE =
-            Pattern.compile("(?is)(?:a qué actas|a que actas)\\s+asiste\\s+(.+?)\\s*\\??\\s*$");
+            Pattern.compile("(?isu)(?:a qué actas|a que actas)\\s+asiste\\s+(.+?)\\s*\\??\\s*$");
     private static final Pattern TOPIC_SUMMARY =
             Pattern.compile(
-                    "(?is)(?:dime|indica)\\s+(?:qué|que)\\s+se\\s+ha\\s+hablado\\s+sobre\\s+(.+?)\\s*\\??\\s*$");
+                    "(?isu)(?:dime|indica)\\s+(?:qué|que)\\s+se\\s+ha\\s+hablado\\s+sobre\\s+(.+?)\\s*\\??\\s*$");
 
     private static final Pattern TOPIC_COUNT =
             Pattern.compile(
-                    "(?is)(?:en\\s+cuántas|en\\s+cuantas|dime\\s+en\\s+cuántas|dime\\s+en\\s+cuantas)\\s+reuniones\\s+se\\s+trat(?:ó|o)\\s+(?:el\\s+asunto\\s+de\\s+)?(.+?)\\s*\\??\\s*$");
+                    "(?isu)(?:en\\s+cuántas|en\\s+cuantas|dime\\s+en\\s+cuántas|dime\\s+en\\s+cuantas)\\s+reuniones\\s+se\\s+trat(?:ó|o)\\s+(?:el\\s+asunto\\s+de\\s+)?(.+?)\\s*\\??\\s*$");
 
     private static final Map<String, List<String>> TOPIC_ALIASES =
             Map.of(

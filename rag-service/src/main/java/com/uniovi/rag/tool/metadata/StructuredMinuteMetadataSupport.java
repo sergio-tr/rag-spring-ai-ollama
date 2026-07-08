@@ -1323,7 +1323,7 @@ public final class StructuredMinuteMetadataSupport {
           return null;
       }
       Matcher matcher =
-              Pattern.compile("(?:del\\s+)?(?:ano|año)\\s+(\\d{4})", Pattern.CASE_INSENSITIVE)
+              Pattern.compile("(?:del\\s+)?(?:ano|año)\\s+(\\d{4})", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE)
                       .matcher(query);
       return matcher.find() ? matcher.group(1) : null;
   }

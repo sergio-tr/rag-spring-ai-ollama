@@ -39,7 +39,11 @@ public final class SpanishRetrievalTextSupport {
             return "";
         }
         String collapsed = raw.trim().replaceAll("\\s+", " ");
-        String stripped = collapsed.replaceAll("^[^\\p{L}\\p{N}]+|[^\\p{L}\\p{N}]+$", "").trim();
+        String stripped =
+                collapsed
+                        .replaceAll("^[^\\p{L}\\p{N}]+", "")
+                        .replaceAll("[^\\p{L}\\p{N}]+$", "")
+                        .trim();
         return foldAccents(stripped.toLowerCase(Locale.ROOT));
     }
 

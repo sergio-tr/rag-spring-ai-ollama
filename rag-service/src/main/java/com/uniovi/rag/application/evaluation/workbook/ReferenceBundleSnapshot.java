@@ -39,8 +39,6 @@ public record ReferenceBundleSnapshot(
         if (counts == null) {
             counts = ReferenceBundleCounts.fromWorkbook(workbook);
         }
-        protocolVersion = protocolVersion != null ? protocolVersion : Optional.empty();
-        sha256Hex = sha256Hex != null ? sha256Hex : Optional.empty();
         byteSize = Math.max(0, byteSize);
     }
 

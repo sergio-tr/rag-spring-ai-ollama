@@ -58,7 +58,7 @@ public record IndexCompatibilityResult(
         }
 
         if (req.requiresMetadataSupport()) {
-            Boolean supportsMetadata = snap != null ? snap.supportsMetadata() : null;
+            Boolean supportsMetadata = snap.supportsMetadata();
             if (supportsMetadata == null || !supportsMetadata) {
                 return requiresReindex(
                         "METADATA_SUPPORT_REQUIRED",

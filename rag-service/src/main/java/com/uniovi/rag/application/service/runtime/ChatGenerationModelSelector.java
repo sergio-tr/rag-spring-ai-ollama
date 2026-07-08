@@ -79,7 +79,7 @@ public class ChatGenerationModelSelector {
     }
 
     private static Optional<String> normalizedOverride(Optional<String> chatModelOverride) {
-        if (chatModelOverride == null || chatModelOverride.isEmpty()) {
+        if (chatModelOverride.isEmpty()) {
             return Optional.empty();
         }
         String trimmed = chatModelOverride.get().trim();
