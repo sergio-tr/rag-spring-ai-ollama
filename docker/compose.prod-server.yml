@@ -4,7 +4,7 @@
 # Model serving is external (LiteLLM on the model-serving host); do not enable --ollama or --mail.
 services:
   backend:
-    ports: []
+    ports: !reset []
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod,docker,infra}
       RAG_HEALTH_OLLAMA_VERIFY_MODELS: "false"
@@ -13,6 +13,11 @@ services:
       - private
 
   classifier-service:
-    ports: []
+    ports: !reset []
     networks:
       - private
+
+  webapp:
+    environment:
+      # Production HTTPS: honour Secure cookies (see rag-service/.env COOKIE_SECURE=true).
+      E2E_ALLOW_INSECURE_COOKIES: "false"

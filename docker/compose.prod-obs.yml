@@ -2,21 +2,21 @@
 # Use with docker-compose.yml + compose.obs.yml + profile observability + compose.prod.yml.
 services:
   jaeger:
-    ports: []
+    ports: !reset []
     networks:
       - private
 
   prometheus:
-    ports: []
+    ports: !reset []
     networks:
       - private
 
   grafana:
-    ports: []
+    ports: !reset []
     networks:
       - private
 
   otel-collector:
-    ports: []
+    ports: !reset []
     networks:
       - private

@@ -1,7 +1,7 @@
 services:
   # Backend only exposed through reverse proxy in prod local
   backend:
-    ports: []
+    ports: !reset []
     environment:
       # In prod local/prod we don't use ddl-auto=update. It is controlled by migrations (Flyway).
       SPRING_JPA_HIBERNATE_DDL_AUTO: none
@@ -11,7 +11,7 @@ services:
 
   postgres:
     # Do not expose Postgres on the host in prod local
-    ports: []
+    ports: !reset []
     networks:
       - private
 
@@ -20,13 +20,17 @@ services:
     networks:
       - private
 
+  postgres-monitor-bootstrap:
+    networks:
+      - private
+
   classifier-service:
-    ports: []
+    ports: !reset []
     networks:
       - private
 
   webapp:
-    ports: []
+    ports: !reset []
     networks:
       - public
     environment:
