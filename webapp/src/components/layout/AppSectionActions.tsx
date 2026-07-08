@@ -53,11 +53,6 @@ function ProjectsSectionActions() {
         <SectionMenuTrigger ariaLabel={t("projectsMenuLabel")} />
         <DropdownMenuContent align="end" className="min-w-56">
           <DropdownMenuItem onClick={() => setNewProjectOpen(true)}>{t("newProject")}</DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem disabled className="flex cursor-not-allowed flex-col items-start opacity-60">
-            <span>{t("deleteAllProjects")}</span>
-            <MenuHint>{t("deleteAllProjectsUnavailable")}</MenuHint>
-          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <NewProjectDialog open={newProjectOpen} onOpenChange={setNewProjectOpen} />

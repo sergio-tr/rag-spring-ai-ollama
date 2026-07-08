@@ -78,7 +78,7 @@ class TaskLlmRoleDefaultsAssignmentTest {
                 Map.of("temperature", 0.0, "topP", 0.9, "seed", 42L, "maxTokens", 512, "responseFormat", "json_object"));
         assertRole(
                 TaskLlmTask.EVALUATION_JUDGE,
-                "gemma4:12b",
+                "qwen3.5:9b",
                 Map.of("temperature", 0.0, "topP", 0.9, "seed", 42L, "maxTokens", 512, "responseFormat", "json_object"));
         assertRole(
                 TaskLlmTask.NER_EXTRACTION,
@@ -105,7 +105,7 @@ class TaskLlmRoleDefaultsAssignmentTest {
 
         TaskLlmConfigResolver.SecondaryCallConfig judge =
                 resolver.resolveSecondaryCall(userId, projectId, "evaluation-judge", null, null);
-        assertThat(judge.effectiveModel()).isEqualTo("gemma4:12b");
+        assertThat(judge.effectiveModel()).isEqualTo("qwen3.5:9b");
         assertThat(judge.effectiveConfig().additionalParameters()).containsEntry("maxTokens", 512);
         assertThat(judge.effectiveConfig().additionalParameters().get("responseFormat"))
                 .isEqualTo(Map.of("type", "json_object"));

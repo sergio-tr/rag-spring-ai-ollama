@@ -107,7 +107,7 @@ function catalog(
 }
 
 describe("resolveIndexAwareDefaultPreset", () => {
-  it("prefers Demo_Best when compatible on HYBRID+metadata index", () => {
+  it("prefers P3 when compatible on HYBRID+metadata index", () => {
     const result = resolveIndexAwareDefaultPreset(
       catalog(
         [selectable(DEMO_BEST_PRESET_ID, true), selectable(P3_PRESET_ID, true)],
@@ -121,8 +121,8 @@ describe("resolveIndexAwareDefaultPreset", () => {
         },
       ),
     );
-    expect(result.presetId).toBe(DEMO_BEST_PRESET_ID);
-    expect(result.source).toBe("demo_best");
+    expect(result.presetId).toBe(P3_PRESET_ID);
+    expect(result.source).toBe("p3_default");
     expect(result.demoBestIncompatible).toBe(false);
   });
 
@@ -134,22 +134,21 @@ describe("resolveIndexAwareDefaultPreset", () => {
       ]),
     );
     expect(result.presetId).toBe(P3_PRESET_ID);
-    expect(result.source).toBe("product");
+    expect(result.source).toBe("p3_default");
     expect(result.demoBestIncompatible).toBe(true);
     expect(result.demoBestDisabledReason).toBe("Requires HYBRID");
   });
 
   it("falls back to P3 experimental preset on CHUNK_LEVEL-only projects", () => {
-    const p3 = EXPERIMENTAL_DEFAULT_PRESET_PRIORITY[2];
     const result = resolveIndexAwareDefaultPreset(
-      catalog([incompatible(DEMO_BEST_PRESET_ID, "Requires HYBRID")], [experimental(p3!, true)]),
+      catalog([incompatible(DEMO_BEST_PRESET_ID, "Requires HYBRID")], [experimental(P3_PRESET_ID, true)]),
     );
-    expect(result.presetId).toBe(p3);
-    expect(result.source).toBe("experimental");
+    expect(result.presetId).toBe(P3_PRESET_ID);
+    expect(result.source).toBe("p3_default");
   });
 
   it("falls back to P0 when no retrieval-compatible preset exists", () => {
-    const p0 = EXPERIMENTAL_DEFAULT_PRESET_PRIORITY[4];
+    const p0 = EXPERIMENTAL_DEFAULT_PRESET_PRIORITY[3];
     const result = resolveIndexAwareDefaultPreset(
       catalog([incompatible(DEMO_BEST_PRESET_ID, "Requires HYBRID")], [experimental(p0!, true)]),
     );

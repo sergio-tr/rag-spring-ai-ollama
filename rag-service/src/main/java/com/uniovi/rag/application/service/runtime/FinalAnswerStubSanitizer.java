@@ -27,20 +27,22 @@ public final class FinalAnswerStubSanitizer {
 
     private static final Logger log = LoggerFactory.getLogger(FinalAnswerStubSanitizer.class);
 
+    private static final int UNICODE_CANON = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.CANON_EQ;
+
     private static final Pattern FOUND_MEETING_MINUTES =
-            Pattern.compile("^Found\\s+(\\d+)\\s+relevant\\s+meeting\\s+minutes:?\\.?\\s*$", Pattern.CASE_INSENSITIVE);
+            Pattern.compile("^Found\\s+(\\d+)\\s+relevant\\s+meeting\\s+minutes:?\\.?\\s*$", UNICODE_CANON);
     private static final Pattern FOUND_MINUTE_PAREN =
-            Pattern.compile("^Found\\s+(\\d+)\\s+relevant\\s+minute\\(s\\)\\.?\\s*$", Pattern.CASE_INSENSITIVE);
+            Pattern.compile("^Found\\s+(\\d+)\\s+relevant\\s+minute\\(s\\)\\.?\\s*$", UNICODE_CANON);
     private static final Pattern FOUND_PARAGRAPHS =
-            Pattern.compile("^Found\\s+(\\d+)\\s+relevant\\s+paragraphs:?\\.?\\s*$", Pattern.CASE_INSENSITIVE);
+            Pattern.compile("^Found\\s+(\\d+)\\s+relevant\\s+paragraphs:?\\.?\\s*$", UNICODE_CANON);
     private static final Pattern FOUND_ENTITIES =
-            Pattern.compile("^Found\\s+(\\d+)\\s+relevant\\s+entities:?\\.?\\s*$", Pattern.CASE_INSENSITIVE);
+            Pattern.compile("^Found\\s+(\\d+)\\s+relevant\\s+entities:?\\.?\\s*$", UNICODE_CANON);
     private static final Pattern ES_ACTAS_RELEVANTES =
             Pattern.compile(
                     "^Se\\s+encontraron\\s+(\\d+)\\s+actas\\s+relevantes\\s+según\\s+los\\s+criterios\\s+de\\s+la\\s+consulta\\.?\\s*$",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+                    UNICODE_CANON);
     private static final Pattern MORE_INFORMATION_ONLY =
-            Pattern.compile("^(?:More information|Más información)\\.?\\s*$", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+            Pattern.compile("^(?:More information|Más información)\\.?\\s*$", UNICODE_CANON);
 
     private FinalAnswerStubSanitizer() {}
 
@@ -269,7 +271,7 @@ public final class FinalAnswerStubSanitizer {
         Pattern personPattern =
                 Pattern.compile(
                         "([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})",
-                        Pattern.UNICODE_CASE);
+                        Pattern.UNICODE_CASE | Pattern.CANON_EQ);
         Matcher m = personPattern.matcher(query);
         if (m.find()) {
             return m.group(1).trim();

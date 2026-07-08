@@ -8,22 +8,24 @@ import java.util.regex.Pattern;
  */
 public final class ReasoningBlockSanitizer {
 
+    private static final int UNICODE_CANON = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.CANON_EQ;
+
     private static final Pattern THINK_TAGS =
             Pattern.compile(
                     "(?is)<\\s*(?:think|redacted_thinking|redacted_reasoning)\\b[^>]*>.*?</\\s*(?:think|redacted_thinking|redacted_reasoning)\\s*>");
     private static final Pattern THINK_TAG_TRAILING =
-            Pattern.compile("(?is)<\\s*(?:think|redacted_thinking|redacted_reasoning)\\b[^>]*>.*$");
+            Pattern.compile("(?is)<\\s*(?:think|redacted_thinking|redacted_reasoning)\\b[^>]*>.*+$");
     private static final Pattern REACT_LABELED_LINE =
-            Pattern.compile("(?iu)^\\s*(?:Thought|Reasoning|Action|Observation)\\s*:.*");
+            Pattern.compile("(?iu)^\\s*(?:Thought|Reasoning|Action|Observation)\\s*:.*+$");
     private static final Pattern INTERNAL_JSON_PLAN =
             Pattern.compile(
                     "(?is)\\{\\s*\"(?:workflowName|routingRouteKind|routingOutcome|predictedQueryType|queryTypePredicted|memoryOutcome|classifierLabel)\"\\s*:[^}]{0,2000}\\}");
     private static final Pattern ROUTING_LABELS =
             Pattern.compile(
                     "\\b(?:PARENT_P\\d+|PARENT_P[A-Z_]+|baseline_floor[\\w:]*|RETRIEVAL_WORKFLOW_ROUTE|DETERMINISTIC_TOOL_ROUTE|FUNCTION_CALLING_ROUTE|ADVISOR_ROUTE|deterministic-tool|function-calling|topic_not_in_context|not_in_context|function_sentinel_abstention|native_not_constraint_complete|advanced_preset_parent_floor|outcome=\\w+|routeKind=\\w+)\\b",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+                    UNICODE_CANON);
     private static final Pattern JUDGE_FORMAT_LINE =
-            Pattern.compile("(?im)^\\s*(?:Answer|Explanation|FEEDBACK)\\s*:.*$");
+            Pattern.compile("(?im)^\\s*(?:Answer|Explanation|FEEDBACK)\\s*:.*+$");
     private static final Pattern REDACTED_REASONING_TOKEN =
             Pattern.compile("(?im)^\\s*redacted_reasoning\\s*$");
 

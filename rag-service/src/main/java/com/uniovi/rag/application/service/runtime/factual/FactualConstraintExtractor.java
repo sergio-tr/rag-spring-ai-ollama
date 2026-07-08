@@ -17,42 +17,49 @@ import java.util.regex.Pattern;
 
 public final class FactualConstraintExtractor {
 
-    private static final Pattern QUOTED = Pattern.compile("[\"«]([^\"»]{2,80})[\"»]");
-    private static final Pattern RESPECTO_A = Pattern.compile("respecto a (?:la |el )?([^?.!,;]+)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-    private static final Pattern SOBRE = Pattern.compile("sobre (?:la |el )?([^?.!,;]+)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-    private static final Pattern MENCIONA = Pattern.compile("mencion(?:an|a|o) (?:la |el )?([^?.!,;]+)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-    private static final Pattern HABLO_DE = Pattern.compile("(?:se )?hablo de (?:la |el |los |las )?([^?.!,;]+)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-    private static final Pattern EXACTLY = Pattern.compile("exactamente\\s+(\\d+)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-    private static final Pattern AT_LEAST = Pattern.compile("(?:más de|mas de|al menos)\\s+(\\d+)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-    private static final Pattern AT_MOST = Pattern.compile("(?:menos de|como máximo|como maximo)\\s+(\\d+)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final int UNICODE_CANON = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.CANON_EQ;
+
+    private static final Pattern QUOTED = Pattern.compile("[\"«]([^\"»]{2,80})[\"»]", UNICODE_CANON);
+    private static final Pattern RESPECTO_A =
+            Pattern.compile("respecto a (?:la |el )?([^?.!,;]+)", UNICODE_CANON);
+    private static final Pattern SOBRE = Pattern.compile("sobre (?:la |el )?([^?.!,;]+)", UNICODE_CANON);
+    private static final Pattern MENCIONA =
+            Pattern.compile("mencion(?:an|a|o) (?:la |el )?([^?.!,;]+)", UNICODE_CANON);
+    private static final Pattern HABLO_DE =
+            Pattern.compile("(?:se )?hablo de (?:la |el |los |las )?([^?.!,;]+)", UNICODE_CANON);
+    private static final Pattern EXACTLY = Pattern.compile("exactamente\\s+(\\d+)", UNICODE_CANON);
+    private static final Pattern AT_LEAST = Pattern.compile("(?:más de|mas de|al menos)\\s+(\\d+)", UNICODE_CANON);
+    private static final Pattern AT_MOST =
+            Pattern.compile("(?:menos de|como máximo|como maximo)\\s+(\\d+)", UNICODE_CANON);
     private static final Pattern COUNT_SHAPE =
-            Pattern.compile("\\b(cuántas|cuantas|cuántos|cuantos|número de|numero de|en cuántas|en cuantas|cuánto dur|cuanto dur|duración|duracion)\\b", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+            Pattern.compile(
+                    "\\b(cuántas|cuantas|cuántos|cuantos|número de|numero de|en cuántas|en cuantas|cuánto dur|cuanto dur|duración|duracion)\\b",
+                    UNICODE_CANON);
     private static final Pattern ABSENCE_SHAPE =
             Pattern.compile(
                     "\\b(se hablo|se comento|ninguna|no existen|no hay|no se menciona|no se encuentra)\\b",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+                    UNICODE_CANON);
     private static final Pattern TOPIC_ABSENCE_INQUIRY =
             Pattern.compile(
                     "(?:que se comento|qué se comentó|que se dijo|qué se dijo|que se menciono|qué se mencionó)"
                             + "\\s+(?:respecto|sobre)",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+                    UNICODE_CANON);
     private static final Pattern TOPIC_INQUIRY_RESPECTO =
             Pattern.compile(
                     "\\b(?:qué|que)\\s+(?:se comentó|se comento|se dijo|se mencionó|se menciono)\\s+respecto\\s+a\\s+",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+                    UNICODE_CANON);
     private static final Pattern TOPIC_INQUIRY_SOBRE =
             Pattern.compile(
                     "\\b(?:qué|que)\\s+(?:se comentó|se comento|se dijo|se mencionó|se menciono)\\s+sobre\\s+",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+                    UNICODE_CANON);
     private static final Pattern TOPIC_INQUIRY_HABLO =
             Pattern.compile(
-                    "\\b(?:qué|que|en qué|en que)\\s+.*\\b(?:se habló|se hablo)\\s+de\\s+",
-                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+                    "\\b(?:qué|que|en qué|en que)\\s+.*+\\b(?:se habló|se hablo)\\s+de\\s+",
+                    UNICODE_CANON);
     private static final Pattern THRESHOLD_ATTENDANCE_ABSENCE =
-            Pattern.compile("participaron\\s+menos\\s+de", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-    private static final Pattern BOOLEAN_VERIFY =
-            Pattern.compile("\\b(verifica|confirma)\\s+si\\b", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-    private static final Pattern FUTURE_YEAR = Pattern.compile("\\b(202[89]|20[3-9]\\d)\\b");
+            Pattern.compile("participaron\\s+menos\\s+de", UNICODE_CANON);
+    private static final Pattern BOOLEAN_VERIFY = Pattern.compile("\\b(verifica|confirma)\\s+si\\b", UNICODE_CANON);
+    private static final Pattern FUTURE_YEAR = Pattern.compile("\\b(202[89]|20[3-9]\\d)\\b", Pattern.CANON_EQ);
     private static final int UNAVAILABLE_YEAR_THRESHOLD = 2028;
 
     public static String constraintsPromptBlock(FactualQuestionConstraints constraints) {

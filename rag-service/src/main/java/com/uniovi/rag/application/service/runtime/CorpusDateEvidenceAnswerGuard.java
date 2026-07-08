@@ -18,7 +18,7 @@ public final class CorpusDateEvidenceAnswerGuard {
                     "(?i)(no\\s+(?:existe|hay|encuentro|se\\s+puede|puede\\s+existir)|no\\s+he\\s+encontrado|"
                             + "no\\s+est[aá]\\s+registrad|fecha\\s+futur|a[uú]n\\s+no\\s+ha\\s+ocurr|imposible|"
                             + "does\\s+not\\s+exist|could\\s+not\\s+find|no\\s+meeting)",
-                    Pattern.UNICODE_CASE);
+                    Pattern.UNICODE_CASE | Pattern.CANON_EQ);
 
     private CorpusDateEvidenceAnswerGuard() {}
 
