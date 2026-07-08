@@ -9,7 +9,7 @@ public final class DeterministicToolNegativeAnswerDetector {
     private static final Pattern NEGATIVE_OR_NO_DATA =
             Pattern.compile(
                     "(?i)(?:"
-                            + "no\\s+(?:se\\s+)?(?:encontr(?:aron|ó|o|aron|ar)|encuentra|encuentran|hay|existen|existe|consta|figura|aparece|registr(?:aron|ó|o|a|an)|localiz(?:aron|ó|o|a|an))"
+                            + "no\\s+(?:se\\s+)?(?:encontr(?:aron|ó|o|ar)|encuentra|encuentran|hay|existen|existe|consta|figura|aparece|registr(?:aron|ó|o|a|an)|localiz(?:aron|ó|o|a|an))"
                             + "|ningun[ao]\\s+(?:acta|reuni[oó]n|documento|registro|asistente|coincidencia|resultado|menci[oó]n)"
                             + "|no\\s+hay\\s+ningun[ao]"
                             + "|sin\\s+(?:actas|reuniones|documentos|resultados|coincidencias|informaci[oó]n)"
@@ -36,6 +36,11 @@ public final class DeterministicToolNegativeAnswerDetector {
                     "(?i)(?:^|\\b)(?:0|zero)\\s+(?:actas?|reuniones?|documentos?|coincidencias?|matches?)(?:\\b|$)",
                     Pattern.UNICODE_CASE);
 
+    private static final Pattern AFFIRMATIVE_COUNT_WITH_ACTA =
+            Pattern.compile(
+                    "\\b(?:una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\\d+)\\b.*acta",
+                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+
     private DeterministicToolNegativeAnswerDetector() {}
 
     public static boolean isNegativeOrNoData(String answerText) {
@@ -57,7 +62,7 @@ public final class DeterministicToolNegativeAnswerDetector {
             return false;
         }
         String lower = answerText.toLowerCase(Locale.ROOT);
-        return lower.matches(".*\\b(?:una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\\d+)\\b.*acta.*")
+        return AFFIRMATIVE_COUNT_WITH_ACTA.matcher(lower).find()
                 || lower.contains(".pdf")
                 || lower.contains("acta del")
                 || lower.contains("acta de");
