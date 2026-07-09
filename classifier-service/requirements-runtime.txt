@@ -1,5 +1,5 @@
 # Production/runtime deps for Docker (sklearn default model). No TensorFlow - see requirements-gpu.txt.
-protobuf<6
+protobuf<8
 pandas
 openpyxl
 scikit-learn>=1.7.2,<1.9
